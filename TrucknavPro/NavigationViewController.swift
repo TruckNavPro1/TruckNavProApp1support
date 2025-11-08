@@ -6,34 +6,30 @@
 import UIKit
 import MapboxMaps
 import MapboxGeocoder
+import MapboxDirections
+import MapboxNavigationCore
+import MapboxNavigationUIKit
 import CoreLocation
 import Combine
 
-class NavigationViewController: UIViewController {
+class MapViewController: UIViewController {
 
     private var mapView: MapView!
     private let locationManager = CLLocationManager()
     private var cancelables = Set<AnyCancelable>()
     private var lastBearing: CLLocationDirection = 0
 
-    // TomTom Routing
-    private var tomtomService: TomTomRoutingService!
+    // Mapbox Navigation Provider (v3)
+    private var navigationProvider: MapboxNavigationProvider!
+    private var mapboxNavigation: MapboxNavigation!
+    private var currentNavigationViewController: NavigationViewController?
 
-    // Standard US Semi-Trailer Parameters
-    private var truckParameters = TruckParameters(
-        weight: 36287,      // 80,000 lbs = 36,287 kg (US legal limit)
-        axleWeight: 15422,  // 34,000 lbs per axle group
-        length: 16.15,      // 53 ft trailer = 16.15 meters
-        width: 2.44,        // 8 ft = 2.44 meters
-        height: 4.11,       // 13'6" = 4.11 meters (standard semi height)
-        commercialVehicle: true,
-        loadType: nil       // Set to enable hazmat restrictions
-    )
+    // Standard US Semi-Trailer Parameters (for Mapbox Directions API)
+    private let truckHeight: Measurement<UnitLength> = Measurement(value: 4.11, unit: .meters)  // 13'6"
+    private let truckWidth: Measurement<UnitLength> = Measurement(value: 2.44, unit: .meters)   // 8 ft
+    private let truckWeight: Measurement<UnitMass> = Measurement(value: 36.287, unit: .metricTons) // 80,000 lbs
 
     // Navigation state
-    private var currentRoute: TomTomRoute?
-    private var currentRouteCoordinates: [CLLocationCoordinate2D] = []
-    private var currentStepIndex: Int = 0
     private var isNavigating: Bool = false
 
     // Search components
@@ -77,6 +73,12 @@ class NavigationViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        // Initialize Mapbox Navigation Provider (v3)
+        let coreConfig = CoreConfig()
+        navigationProvider = MapboxNavigationProvider(coreConfig: coreConfig)
+        mapboxNavigation = navigationProvider.mapboxNavigation
+
         setupLocationManager()
         setupMapView()
         setupSearchBar()
@@ -92,35 +94,48 @@ class NavigationViewController: UIViewController {
         view.bringSubviewToFront(endNavigationButton)
         view.bringSubviewToFront(testButton)
 
-        // Uncomment to enable hazmat restrictions
-        // enableHazmatMode()
+        print("🚛 TruckNav Pro initialized with Mapbox Navigation SDK v3")
     }
 
     // MARK: - Truck Configuration Helpers
 
-    /// Enable hazmat mode: avoids tunnels, enables hazmat class
-    private func enableHazmatMode(hazmatClasses: [String] = ["USHazmatClass2"]) {
-        truckParameters.loadType = hazmatClasses
-        truckParameters.avoidTunnels = true
-        print("🚨 HAZMAT MODE ENABLED - Avoiding tunnels, hazmat class: \(hazmatClasses)")
-    }
+    /// Configure route options with truck parameters
+    private func configureTruckRouteOptions(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) -> NavigationRouteOptions {
+        // Create waypoints
+        let waypoints = [origin, destination]
 
-    /// Avoid tolls for cost optimization
-    private func enableTollAvoidance() {
-        truckParameters.avoidTolls = true
-        print("💰 TOLL AVOIDANCE ENABLED")
-    }
+        let options = NavigationRouteOptions(coordinates: waypoints)
 
-    /// Avoid ferries (for time-sensitive loads)
-    private func enableFerryAvoidance() {
-        truckParameters.avoidFerries = true
-        print("⛴️ FERRY AVOIDANCE ENABLED")
+        // Set truck-specific parameters
+        options.maximumHeight = truckHeight
+        options.maximumWidth = truckWidth
+        options.maximumWeight = truckWeight
+
+        // Avoid unpaved roads and tunnels (for safety and hazmat)
+        options.roadClassesToAvoid = [.unpaved]
+
+        // Request route alternatives
+        options.includesAlternativeRoutes = true
+
+        // Enable detailed annotations for navigation
+        options.attributeOptions = [.speed, .distance, .expectedTravelTime, .congestionLevel]
+
+        print("🚛 Truck routing configured: \(truckHeight.value)m height, \(truckWidth.value)m width, \(truckWeight.value)t weight")
+
+        return options
     }
 
     private func setupLocationManager() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        locationManager.requestWhenInUseAuthorization()
+
+        // Request "Always" authorization for background turn-by-turn navigation
+        locationManager.requestAlwaysAuthorization()
+
+        // Enable background location updates
+        locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.pausesLocationUpdatesAutomatically = false
+
         locationManager.startUpdatingLocation()
         locationManager.startUpdatingHeading()
     }
@@ -136,12 +151,6 @@ class NavigationViewController: UIViewController {
             fatalError("Mapbox access token not found in Info.plist")
         }
         geocoder = Geocoder(accessToken: mapboxToken)
-
-        // Initialize TomTom Routing with API key
-        guard let tomtomKey = Bundle.main.object(forInfoDictionaryKey: "TomTomAPIKey") as? String else {
-            fatalError("TomTom API key not found in Info.plist")
-        }
-        tomtomService = TomTomRoutingService(apiKey: tomtomKey)
 
         mapView.mapboxMap.onStyleLoaded.observeNext { [weak self] _ in
             self?.configurePuck()
@@ -182,10 +191,8 @@ class NavigationViewController: UIViewController {
 
             self.mapView.camera.ease(to: cameraOptions, duration: 1.0)
 
-            // Update navigation if active
-            if self.isNavigating {
-                self.updateNavigationProgress(userLocation: location.coordinate)
-            }
+            // Free-drive mode camera tracking
+            // When NavigationViewController is active, it handles its own camera
         }.store(in: &self.cancelables)
     }
 
@@ -389,25 +396,21 @@ class NavigationViewController: UIViewController {
 
     @objc private func endNavigation() {
         isNavigating = false
-        currentRoute = nil
-        currentStepIndex = 0
 
+        // Dismiss NavigationViewController if it's still presented
+        if let navVC = currentNavigationViewController {
+            navVC.dismiss(animated: true) {
+                print("🛑 Navigation ended")
+            }
+            currentNavigationViewController = nil
+        }
+
+        // Show search UI again
         instructionView.isHidden = true
         bottomInfoView.isHidden = true
         endNavigationButton.isHidden = true
         testButton.isHidden = false
         searchBar.isHidden = false
-
-        // Remove route line
-        do {
-            try mapView.mapboxMap.removeLayer(withId: "route-layer")
-            try mapView.mapboxMap.removeSource(withId: "route-source")
-            print("✅ Route line removed from map")
-        } catch {
-            print("⚠️ Could not remove route line: \(error.localizedDescription)")
-        }
-
-        print("🛑 Navigation ended")
     }
 
     private func calculateRoute(to destination: CLLocationCoordinate2D) {
@@ -417,193 +420,68 @@ class NavigationViewController: UIViewController {
         }
 
         print("🚛 Calculating TRUCK route from \(userLocation) to \(destination)")
-        print("🚛 Truck params: \(truckParameters.weight ?? 0)kg, \(truckParameters.height ?? 0)m height")
+        print("🚛 Truck params: \(truckHeight.value)m height, \(truckWidth.value)m width, \(truckWeight.value)t weight")
 
-        // Use TomTom for truck routing
-        tomtomService.calculateRoute(
-            from: userLocation,
-            to: destination,
-            truckParams: truckParameters
-        ) { [weak self] result in
-            guard let self = self else { return }
+        // Configure truck-specific route options
+        let routeOptions = configureTruckRouteOptions(from: userLocation, to: destination)
 
-            switch result {
-            case .success(let response):
-                guard let route = response.routes.first else {
-                    print("⚠️ No route found")
-                    DispatchQueue.main.async {
-                        let alert = UIAlertController(
-                            title: "No Route",
-                            message: "No truck route found for this destination",
-                            preferredStyle: .alert
-                        )
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(alert, animated: true)
-                    }
-                    return
-                }
+        // Calculate route using Navigation Provider (v3 async API)
+        let request = mapboxNavigation.routingProvider().calculateRoutes(options: routeOptions)
 
-                print("✅ Truck route calculated: \(route.distance)m, \(route.travelTime)s")
+        Task { @MainActor in
+            switch await request.result {
+            case .success(let navigationRoutes):
+                print("✅ Truck route calculated successfully")
                 print("🚛 Route respects truck restrictions!")
 
-                DispatchQueue.main.async {
-                    self.startNavigation(with: route)
-                }
+                startNavigation(with: navigationRoutes)
 
             case .failure(let error):
                 print("❌ Route calculation failed: \(error)")
 
-                DispatchQueue.main.async {
-                    let alert = UIAlertController(
-                        title: "Route Error",
-                        message: error.localizedDescription,
-                        preferredStyle: .alert
-                    )
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self.present(alert, animated: true)
-                }
+                let alert = UIAlertController(
+                    title: "Route Error",
+                    message: error.localizedDescription,
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
             }
         }
     }
 
-    private func startNavigation(with route: TomTomRoute) {
-        currentRoute = route
-        currentRouteCoordinates = route.toCoordinates()
-        currentStepIndex = 0
+    private func startNavigation(with navigationRoutes: NavigationRoutes) {
         isNavigating = true
 
-        drawRoute(route)
-
-        // Hide search UI, show navigation UI
-        searchBar.isHidden = true
-        testButton.isHidden = true
-        instructionView.isHidden = false
-        bottomInfoView.isHidden = false
-        endNavigationButton.isHidden = false
-
-        updateInstructions()
-
-        print("🧭 Truck navigation started")
-    }
-
-    private func updateNavigationProgress(userLocation: CLLocationCoordinate2D) {
-        guard let route = currentRoute,
-              let destinationCoord = currentRouteCoordinates.last else {
-            return
-        }
-
-        // Check distance to destination
-        let distanceToDestination = userLocation.distance(to: destinationCoord)
-
-        // If within 50 meters of destination, mark as arrived
-        if distanceToDestination < 50 {
-            arrivedAtDestination()
-            return
-        }
-
-        updateBottomInfo()
-    }
-
-    private func updateInstructions() {
-        guard let route = currentRoute else { return }
-
-        // Simplified instructions for now
-        let distance = formatDistance(route.distance)
-        let instruction = "Follow the truck route"
-
-        instructionView.configure(
-            distance: distance,
-            instruction: instruction,
-            roadName: "Truck-safe route",
-            maneuverType: "straight"
+        // Configure navigation options using the navigation provider
+        let navigationOptions = NavigationOptions(
+            mapboxNavigation: mapboxNavigation,
+            voiceController: navigationProvider.routeVoiceController,
+            eventsManager: navigationProvider.eventsManager()
         )
-    }
 
-    private func updateBottomInfo() {
-        guard let route = currentRoute,
-              let location = locationManager.location else {
-            return
-        }
-
-        // Calculate ETA
-        let eta = Date().addingTimeInterval(route.travelTime)
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-
-        etaLabel.text = "ETA: \(formatter.string(from: eta))"
-        distanceLabel.text = "Distance: \(formatDistance(route.distance))"
-
-        // Current speed
-        let speed = location.speed >= 0 ? location.speed * 2.23694 : 0 // m/s to mph
-        speedLabel.text = String(format: "%.0f mph", speed)
-    }
-
-    private func formatDistance(_ meters: CLLocationDistance) -> String {
-        if meters < 1000 {
-            return String(format: "%.0f m", meters)
-        } else {
-            let miles = meters * 0.000621371
-            return String(format: "%.1f mi", miles)
-        }
-    }
-
-    private func arrivedAtDestination() {
-        isNavigating = false
-
-        let alert = UIAlertController(
-            title: "🎉 You've Arrived!",
-            message: "You have reached your destination",
-            preferredStyle: .alert
+        // Create Mapbox NavigationViewController (drop-in UI component)
+        let navigationViewController = NavigationViewController(
+            navigationRoutes: navigationRoutes,
+            navigationOptions: navigationOptions
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-            self?.endNavigation()
-        })
-        present(alert, animated: true)
+        navigationViewController.delegate = self
+        navigationViewController.modalPresentationStyle = .fullScreen
 
-        print("🎯 Arrived at destination")
-    }
-
-    private func drawRoute(_ route: TomTomRoute) {
-        let coordinates = route.toCoordinates()
-        print("🚛 Truck route has \(coordinates.count) coordinates")
-
-        // Remove existing route if any
-        do {
-            if mapView.mapboxMap.layerExists(withId: "route-layer") {
-                try mapView.mapboxMap.removeLayer(withId: "route-layer")
-            }
-            if mapView.mapboxMap.sourceExists(withId: "route-source") {
-                try mapView.mapboxMap.removeSource(withId: "route-source")
-            }
-        } catch {
-            print("⚠️ Could not remove existing route: \(error.localizedDescription)")
+        // Present Mapbox's premium navigation UI
+        present(navigationViewController, animated: true) {
+            print("🧭 Truck navigation started with Mapbox NavigationViewController v3")
+            print("🚛 Voice guidance, 3D camera, and speed limits enabled automatically")
         }
 
-        var feature = Feature(geometry: .lineString(LineString(coordinates)))
-        feature.identifier = .string("route")
-
-        var source = GeoJSONSource(id: "route-source")
-        source.data = .feature(feature)
-
-        do {
-            try mapView.mapboxMap.addSource(source)
-
-            var routeLayer = LineLayer(id: "route-layer", source: "route-source")
-            routeLayer.lineColor = .constant(StyleColor(.systemBlue)) // Blue for truck routes
-            routeLayer.lineWidth = .constant(6)
-            routeLayer.lineCap = .constant(.round)
-            routeLayer.lineJoin = .constant(.round)
-
-            try mapView.mapboxMap.addLayer(routeLayer)
-
-            print("✅ Truck route line drawn on map (blue)")
-        } catch {
-            print("❌ Failed to draw route on map: \(error.localizedDescription)")
-        }
+        currentNavigationViewController = navigationViewController
     }
+
+    // Note: Navigation UI, route drawing, voice guidance, speed limits, etc.
+    // are all handled automatically by Mapbox NavigationViewController
 }
 
-extension NavigationViewController: UISearchBarDelegate {
+extension MapViewController: UISearchBarDelegate {
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
         performSearch(query: searchText)
     }
@@ -620,7 +498,7 @@ extension NavigationViewController: UISearchBarDelegate {
     }
 }
 
-extension NavigationViewController: UITableViewDelegate, UITableViewDataSource {
+extension MapViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return searchResults.count
     }
@@ -649,7 +527,26 @@ extension NavigationViewController: UITableViewDelegate, UITableViewDataSource {
     }
 }
 
-extension NavigationViewController: CLLocationManagerDelegate {
+// MARK: - NavigationViewControllerDelegate
+
+extension MapViewController: NavigationViewControllerDelegate {
+    func navigationViewControllerDidDismiss(_ navigationViewController: NavigationViewController, byCanceling canceled: Bool) {
+        // User dismissed navigation (either by arriving or canceling)
+        isNavigating = false
+        currentNavigationViewController = nil
+
+        print(canceled ? "🛑 Navigation canceled" : "🎯 Navigation completed")
+    }
+
+    func navigationViewController(_ navigationViewController: NavigationViewController, didArriveAt waypoint: Waypoint) -> Bool {
+        print("🎉 Arrived at destination!")
+        return true
+    }
+}
+
+// MARK: - CLLocationManagerDelegate
+
+extension MapViewController: CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         if manager.authorizationStatus == .authorizedWhenInUse ||
            manager.authorizationStatus == .authorizedAlways {

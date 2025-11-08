@@ -9,6 +9,13 @@
 	<key>TomTomAPIKey</key>
 	<string>Nq78WMNfPT4Xvm8jV7KiYGp6nb55VDkO</string>
 	<key>UIBackgroundModes</key>
-	<array/>
+	<array>
+		<string>audio</string>
+		<string>location</string>
+	</array>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>TruckNav Pro needs your location to provide turn-by-turn truck navigation, even when the app is in the background.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>TruckNav Pro needs your location to provide turn-by-turn truck navigation and show your position on the map.</string>
 </dict>
 </plist>
