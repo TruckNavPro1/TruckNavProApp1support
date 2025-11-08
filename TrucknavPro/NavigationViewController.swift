@@ -31,9 +31,20 @@ class MapViewController: UIViewController {
 
     // Navigation state
     private var isNavigating: Bool = false
+    private var currentNavigationRoutes: NavigationRoutes?
+
+    // Free-drive mode UI
+    private let speedLimitView = UILabel()
+    private let roadNameLabel = UILabel()
+
+    // Route preview UI
+    private let routePreviewContainer = UIView()
+    private let startNavigationButton = UIButton(type: .system)
+    private let routeInfoStack = UIStackView()
 
     // Search components
-    private let searchBar = UISearchBar()
+    private let searchContainer = UIView()
+    private let searchTextField = UITextField()
     private let searchResultsTable = UITableView()
     private var searchResults: [GeocodedPlacemark] = []
     private var geocoder: Geocoder!
@@ -46,28 +57,19 @@ class MapViewController: UIViewController {
     private let distanceLabel = UILabel()
     private let speedLabel = UILabel()
 
-    private lazy var testButton: UIButton = {
+    private lazy var recenterButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("📍 Set Test Destination", for: .normal)
-        button.backgroundColor = .systemBlue
-        button.setTitleColor(.white, for: .normal)
-        button.titleLabel?.font = .boldSystemFont(ofSize: 16)
-        button.layer.cornerRadius = 12
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        button.setImage(UIImage(systemName: "location.fill", withConfiguration: config), for: .normal)
+        button.backgroundColor = .systemBackground
+        button.tintColor = .systemBlue
+        button.layer.cornerRadius = 22
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.addTarget(self, action: #selector(setTestDestination), for: .touchUpInside)
-        return button
-    }()
-
-    private lazy var endNavigationButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("✕ End Navigation", for: .normal)
-        button.backgroundColor = .systemRed
-        button.setTitleColor(.white, for: .normal)
-        button.titleLabel?.font = .boldSystemFont(ofSize: 14)
-        button.layer.cornerRadius = 8
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.addTarget(self, action: #selector(endNavigation), for: .touchUpInside)
-        button.isHidden = true
+        button.addTarget(self, action: #selector(recenterMap), for: .touchUpInside)
         return button
     }()
 
@@ -81,18 +83,24 @@ class MapViewController: UIViewController {
 
         setupLocationManager()
         setupMapView()
-        setupSearchBar()
+        setupSearchUI()
         setupSearchResultsTable()
         setupNavigationUI()
-        setupTestButton()
+        setupFreeDriveUI()
+        setupRoutePreviewUI()
+        setupRecenterButton()
 
         // Ensure proper z-ordering (bring controls to front)
-        view.bringSubviewToFront(searchBar)
+        view.bringSubviewToFront(searchContainer)
         view.bringSubviewToFront(searchResultsTable)
         view.bringSubviewToFront(instructionView)
         view.bringSubviewToFront(bottomInfoView)
-        view.bringSubviewToFront(endNavigationButton)
-        view.bringSubviewToFront(testButton)
+        view.bringSubviewToFront(recenterButton)
+        view.bringSubviewToFront(speedLimitView)
+        view.bringSubviewToFront(roadNameLabel)
+
+        // Start free-drive mode for passive location tracking
+        startFreeDriveMode()
 
         print("🚛 TruckNav Pro initialized with Mapbox Navigation SDK v3")
     }
@@ -141,7 +149,8 @@ class MapViewController: UIViewController {
     }
 
     private func setupMapView() {
-        let mapInitOptions = MapInitOptions(styleURI: .streets)
+        // Use Mapbox Standard style for modern look and feel
+        let mapInitOptions = MapInitOptions(styleURI: .standard)
         mapView = MapView(frame: view.bounds, mapInitOptions: mapInitOptions)
         mapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(mapView)
@@ -213,20 +222,53 @@ class MapViewController: UIViewController {
         }
     }
 
-    private func setupSearchBar() {
-        searchBar.delegate = self
-        searchBar.placeholder = "Search destination"
-        searchBar.searchBarStyle = .minimal
-        searchBar.showsCancelButton = true
-        searchBar.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(searchBar)
+    private func setupSearchUI() {
+        // Search container with shadow
+        searchContainer.backgroundColor = .systemBackground
+        searchContainer.layer.cornerRadius = 12
+        searchContainer.layer.shadowColor = UIColor.black.cgColor
+        searchContainer.layer.shadowOpacity = 0.15
+        searchContainer.layer.shadowOffset = CGSize(width: 0, height: 2)
+        searchContainer.layer.shadowRadius = 8
+        searchContainer.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(searchContainer)
+
+        // Search icon
+        let searchIcon = UIImageView(image: UIImage(systemName: "magnifyingglass"))
+        searchIcon.tintColor = .secondaryLabel
+        searchIcon.translatesAutoresizingMaskIntoConstraints = false
+        searchContainer.addSubview(searchIcon)
+
+        // Search text field
+        searchTextField.placeholder = "Where to?"
+        searchTextField.font = .systemFont(ofSize: 16)
+        searchTextField.borderStyle = .none
+        searchTextField.returnKeyType = .search
+        searchTextField.clearButtonMode = .whileEditing
+        searchTextField.translatesAutoresizingMaskIntoConstraints = false
+        searchTextField.delegate = self
+        searchTextField.addTarget(self, action: #selector(searchTextDidChange), for: .editingChanged)
+        searchContainer.addSubview(searchTextField)
 
         NSLayoutConstraint.activate([
-            searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            searchBar.heightAnchor.constraint(equalToConstant: 50)
+            searchContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            searchContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            searchContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            searchContainer.heightAnchor.constraint(equalToConstant: 56),
+
+            searchIcon.leadingAnchor.constraint(equalTo: searchContainer.leadingAnchor, constant: 16),
+            searchIcon.centerYAnchor.constraint(equalTo: searchContainer.centerYAnchor),
+            searchIcon.widthAnchor.constraint(equalToConstant: 20),
+            searchIcon.heightAnchor.constraint(equalToConstant: 20),
+
+            searchTextField.leadingAnchor.constraint(equalTo: searchIcon.trailingAnchor, constant: 12),
+            searchTextField.trailingAnchor.constraint(equalTo: searchContainer.trailingAnchor, constant: -16),
+            searchTextField.centerYAnchor.constraint(equalTo: searchContainer.centerYAnchor)
         ])
+    }
+
+    @objc private func searchTextDidChange() {
+        performSearch(query: searchTextField.text ?? "")
     }
 
     private func setupSearchResultsTable() {
@@ -243,7 +285,7 @@ class MapViewController: UIViewController {
         view.addSubview(searchResultsTable)
 
         NSLayoutConstraint.activate([
-            searchResultsTable.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8),
+            searchResultsTable.topAnchor.constraint(equalTo: searchContainer.bottomAnchor, constant: 8),
             searchResultsTable.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             searchResultsTable.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             searchResultsTable.heightAnchor.constraint(equalToConstant: 300)
@@ -285,9 +327,6 @@ class MapViewController: UIViewController {
         speedLabel.translatesAutoresizingMaskIntoConstraints = false
         bottomInfoView.addSubview(speedLabel)
 
-        // End navigation button
-        view.addSubview(endNavigationButton)
-
         NSLayoutConstraint.activate([
             instructionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             instructionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -306,24 +345,210 @@ class MapViewController: UIViewController {
             distanceLabel.leadingAnchor.constraint(equalTo: bottomInfoView.leadingAnchor, constant: 16),
 
             speedLabel.topAnchor.constraint(equalTo: bottomInfoView.topAnchor, constant: 12),
-            speedLabel.trailingAnchor.constraint(equalTo: bottomInfoView.trailingAnchor, constant: -16),
-
-            endNavigationButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            endNavigationButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            endNavigationButton.widthAnchor.constraint(equalToConstant: 140),
-            endNavigationButton.heightAnchor.constraint(equalToConstant: 36)
+            speedLabel.trailingAnchor.constraint(equalTo: bottomInfoView.trailingAnchor, constant: -16)
         ])
     }
 
-    private func setupTestButton() {
-        view.addSubview(testButton)
+    private func setupRecenterButton() {
+        view.addSubview(recenterButton)
 
         NSLayoutConstraint.activate([
-            testButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -120),
-            testButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            testButton.widthAnchor.constraint(equalToConstant: 250),
-            testButton.heightAnchor.constraint(equalToConstant: 50)
+            recenterButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            recenterButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -100),
+            recenterButton.widthAnchor.constraint(equalToConstant: 44),
+            recenterButton.heightAnchor.constraint(equalToConstant: 44)
         ])
+    }
+
+    @objc private func recenterMap() {
+        guard let userLocation = locationManager.location?.coordinate else { return }
+
+        let cameraOptions = CameraOptions(
+            center: userLocation,
+            padding: UIEdgeInsets(top: 0, left: 0, bottom: view.bounds.height * 0.4, right: 0),
+            zoom: 17,
+            bearing: lastBearing,
+            pitch: 60
+        )
+
+        mapView.camera.ease(to: cameraOptions, duration: 0.5)
+        print("📍 Map recentered to current location")
+    }
+
+    // MARK: - Free-Drive Mode UI
+
+    private func setupFreeDriveUI() {
+        // Speed Limit View
+        speedLimitView.font = .boldSystemFont(ofSize: 24)
+        speedLimitView.textColor = .white
+        speedLimitView.backgroundColor = .systemRed
+        speedLimitView.textAlignment = .center
+        speedLimitView.layer.cornerRadius = 8
+        speedLimitView.layer.borderWidth = 3
+        speedLimitView.layer.borderColor = UIColor.white.cgColor
+        speedLimitView.clipsToBounds = true
+        speedLimitView.translatesAutoresizingMaskIntoConstraints = false
+        speedLimitView.isHidden = true
+        view.addSubview(speedLimitView)
+
+        // Road Name Label
+        roadNameLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        roadNameLabel.textColor = .label
+        roadNameLabel.textAlignment = .center
+        roadNameLabel.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.9)
+        roadNameLabel.layer.cornerRadius = 8
+        roadNameLabel.clipsToBounds = true
+        roadNameLabel.translatesAutoresizingMaskIntoConstraints = false
+        roadNameLabel.isHidden = true
+        view.addSubview(roadNameLabel)
+
+        NSLayoutConstraint.activate([
+            // Speed limit in top-right corner
+            speedLimitView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 80),
+            speedLimitView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            speedLimitView.widthAnchor.constraint(equalToConstant: 70),
+            speedLimitView.heightAnchor.constraint(equalToConstant: 70),
+
+            // Road name at bottom
+            roadNameLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            roadNameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            roadNameLabel.heightAnchor.constraint(equalToConstant: 40),
+            roadNameLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 300)
+        ])
+    }
+
+    private func startFreeDriveMode() {
+        // Note: Free-drive mode will be enhanced in a future update
+        // For now, basic location tracking is provided through location manager
+        print("🆓 Free-drive mode - using basic location tracking")
+
+        // Speed limit and road name features will be added when
+        // the correct v3 API is confirmed for passive navigation
+    }
+
+    // MARK: - Route Preview UI
+
+    private func setupRoutePreviewUI() {
+        // Container for route preview
+        routePreviewContainer.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
+        routePreviewContainer.layer.cornerRadius = 16
+        routePreviewContainer.layer.shadowColor = UIColor.black.cgColor
+        routePreviewContainer.layer.shadowOpacity = 0.3
+        routePreviewContainer.layer.shadowOffset = CGSize(width: 0, height: -4)
+        routePreviewContainer.layer.shadowRadius = 8
+        routePreviewContainer.translatesAutoresizingMaskIntoConstraints = false
+        routePreviewContainer.isHidden = true
+        view.addSubview(routePreviewContainer)
+
+        // Route info stack
+        routeInfoStack.axis = .vertical
+        routeInfoStack.spacing = 12
+        routeInfoStack.translatesAutoresizingMaskIntoConstraints = false
+        routePreviewContainer.addSubview(routeInfoStack)
+
+        // Start navigation button
+        startNavigationButton.setTitle("🚛 Start Truck Navigation", for: .normal)
+        startNavigationButton.backgroundColor = .systemBlue
+        startNavigationButton.setTitleColor(.white, for: .normal)
+        startNavigationButton.titleLabel?.font = .boldSystemFont(ofSize: 18)
+        startNavigationButton.layer.cornerRadius = 12
+        startNavigationButton.translatesAutoresizingMaskIntoConstraints = false
+        startNavigationButton.addTarget(self, action: #selector(confirmStartNavigation), for: .touchUpInside)
+        routePreviewContainer.addSubview(startNavigationButton)
+
+        NSLayoutConstraint.activate([
+            routePreviewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            routePreviewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            routePreviewContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+            routePreviewContainer.heightAnchor.constraint(equalToConstant: 180),
+
+            routeInfoStack.topAnchor.constraint(equalTo: routePreviewContainer.topAnchor, constant: 20),
+            routeInfoStack.leadingAnchor.constraint(equalTo: routePreviewContainer.leadingAnchor, constant: 20),
+            routeInfoStack.trailingAnchor.constraint(equalTo: routePreviewContainer.trailingAnchor, constant: -20),
+
+            startNavigationButton.topAnchor.constraint(equalTo: routeInfoStack.bottomAnchor, constant: 16),
+            startNavigationButton.leadingAnchor.constraint(equalTo: routePreviewContainer.leadingAnchor, constant: 20),
+            startNavigationButton.trailingAnchor.constraint(equalTo: routePreviewContainer.trailingAnchor, constant: -20),
+            startNavigationButton.heightAnchor.constraint(equalToConstant: 56)
+        ])
+    }
+
+    private func showRoutePreview(for navigationRoutes: NavigationRoutes) {
+        // Store routes
+        currentNavigationRoutes = navigationRoutes
+
+        // Clear previous route info
+        routeInfoStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        // Get primary route
+        let primaryRoute = navigationRoutes.mainRoute.route
+        guard primaryRoute.legs.count > 0 else {
+            print("⚠️ No primary route found")
+            return
+        }
+
+        // Create route info labels
+        let titleLabel = UILabel()
+        titleLabel.text = "🚛 Truck-Safe Route"
+        titleLabel.font = .boldSystemFont(ofSize: 20)
+        titleLabel.textColor = .label
+
+        let distanceLabel = UILabel()
+        let distanceMiles = primaryRoute.distance * 0.000621371
+        distanceLabel.text = String(format: "📏 Distance: %.1f mi", distanceMiles)
+        distanceLabel.font = .systemFont(ofSize: 16)
+        distanceLabel.textColor = .secondaryLabel
+
+        let durationLabel = UILabel()
+        let durationMinutes = Int(primaryRoute.expectedTravelTime / 60)
+        let hours = durationMinutes / 60
+        let minutes = durationMinutes % 60
+        if hours > 0 {
+            durationLabel.text = String(format: "⏱️ Time: %dh %dm", hours, minutes)
+        } else {
+            durationLabel.text = String(format: "⏱️ Time: %dm", minutes)
+        }
+        durationLabel.font = .systemFont(ofSize: 16)
+        durationLabel.textColor = .secondaryLabel
+
+        // Check for alternative routes
+        let alternativesLabel = UILabel()
+        if navigationRoutes.alternativeRoutes.count > 0 {
+            alternativesLabel.text = "📍 +\(navigationRoutes.alternativeRoutes.count) alternative route(s) available"
+            alternativesLabel.font = .systemFont(ofSize: 14, weight: .medium)
+            alternativesLabel.textColor = .systemBlue
+        }
+
+        routeInfoStack.addArrangedSubview(titleLabel)
+        routeInfoStack.addArrangedSubview(distanceLabel)
+        routeInfoStack.addArrangedSubview(durationLabel)
+        if navigationRoutes.alternativeRoutes.count > 0 {
+            routeInfoStack.addArrangedSubview(alternativesLabel)
+        }
+
+        // Show preview UI and hide other UI
+        routePreviewContainer.isHidden = false
+        searchContainer.isHidden = true
+        recenterButton.isHidden = true
+        speedLimitView.isHidden = true
+        roadNameLabel.isHidden = true
+
+        view.bringSubviewToFront(routePreviewContainer)
+
+        print("📍 Route preview displayed with \(navigationRoutes.alternativeRoutes.count) alternatives")
+    }
+
+    @objc private func confirmStartNavigation() {
+        guard let routes = currentNavigationRoutes else {
+            print("⚠️ No routes available to start navigation")
+            return
+        }
+
+        // Hide route preview
+        routePreviewContainer.isHidden = true
+
+        // Start navigation with selected routes
+        startNavigation(with: routes)
     }
 
     private func performSearch(query: String) {
@@ -368,50 +593,6 @@ class MapViewController: UIViewController {
         }
     }
 
-    @objc private func setTestDestination() {
-        print("🔥 BUTTON TAPPED!")
-
-        guard let userLocation = locationManager.location?.coordinate else {
-            print("⚠️ No user location")
-
-            let alert = UIAlertController(
-                title: "No Location",
-                message: "Waiting for location...",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
-            return
-        }
-
-        print("✅ User location: \(userLocation)")
-
-        let testDestination = CLLocationCoordinate2D(
-            latitude: userLocation.latitude + 0.05,
-            longitude: userLocation.longitude
-        )
-
-        calculateRoute(to: testDestination)
-    }
-
-    @objc private func endNavigation() {
-        isNavigating = false
-
-        // Dismiss NavigationViewController if it's still presented
-        if let navVC = currentNavigationViewController {
-            navVC.dismiss(animated: true) {
-                print("🛑 Navigation ended")
-            }
-            currentNavigationViewController = nil
-        }
-
-        // Show search UI again
-        instructionView.isHidden = true
-        bottomInfoView.isHidden = true
-        endNavigationButton.isHidden = true
-        testButton.isHidden = false
-        searchBar.isHidden = false
-    }
 
     private func calculateRoute(to destination: CLLocationCoordinate2D) {
         guard let userLocation = locationManager.location?.coordinate else {
@@ -434,7 +615,8 @@ class MapViewController: UIViewController {
                 print("✅ Truck route calculated successfully")
                 print("🚛 Route respects truck restrictions!")
 
-                startNavigation(with: navigationRoutes)
+                // Show route preview with alternatives before starting navigation
+                showRoutePreview(for: navigationRoutes)
 
             case .failure(let error):
                 print("❌ Route calculation failed: \(error)")
@@ -452,6 +634,10 @@ class MapViewController: UIViewController {
 
     private func startNavigation(with navigationRoutes: NavigationRoutes) {
         isNavigating = true
+
+        // Hide free-drive UI during active navigation
+        speedLimitView.isHidden = true
+        roadNameLabel.isHidden = true
 
         // Configure navigation options using the navigation provider
         let navigationOptions = NavigationOptions(
@@ -481,20 +667,14 @@ class MapViewController: UIViewController {
     // are all handled automatically by Mapbox NavigationViewController
 }
 
-extension MapViewController: UISearchBarDelegate {
-    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        performSearch(query: searchText)
+extension MapViewController: UITextFieldDelegate {
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        textField.resignFirstResponder()
+        return true
     }
 
-    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        searchBar.resignFirstResponder()
-    }
-
-    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
-        searchBar.text = ""
-        searchBar.resignFirstResponder()
-        searchResults = []
-        searchResultsTable.isHidden = true
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        // Show search results table when user starts typing
     }
 }
 
@@ -519,8 +699,8 @@ extension MapViewController: UITableViewDelegate, UITableViewDataSource {
 
         guard let coordinate = placemark.location?.coordinate else { return }
 
-        searchBar.text = placemark.formattedName
-        searchBar.resignFirstResponder()
+        searchTextField.text = placemark.formattedName
+        searchTextField.resignFirstResponder()
         searchResultsTable.isHidden = true
 
         calculateRoute(to: coordinate)
@@ -534,12 +714,26 @@ extension MapViewController: NavigationViewControllerDelegate {
         // User dismissed navigation (either by arriving or canceling)
         isNavigating = false
         currentNavigationViewController = nil
+        currentNavigationRoutes = nil
 
-        print(canceled ? "🛑 Navigation canceled" : "🎯 Navigation completed")
+        // Restart free-drive mode after navigation ends
+        startFreeDriveMode()
+
+        // Show free-drive UI elements
+        speedLimitView.isHidden = false
+        roadNameLabel.isHidden = false
+
+        print(canceled ? "🛑 Navigation canceled - returning to free-drive" : "🎯 Navigation completed - returning to free-drive")
     }
 
     func navigationViewController(_ navigationViewController: NavigationViewController, didArriveAt waypoint: Waypoint) -> Bool {
         print("🎉 Arrived at destination!")
+
+        // Automatically dismiss navigation after arrival
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            navigationViewController.dismiss(animated: true)
+        }
+
         return true
     }
 }
