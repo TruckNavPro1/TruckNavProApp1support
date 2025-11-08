@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>LocationAccuracyAuthorizationDescription</key>
+	<string>Please enable precise location. Turn-by-turn directions only work when precise location data is available.</string>
+	<key>MBXAccessToken</key>
+	<string>pk.eyJ1IjoiZHRyZXZvbjJrMjAiLCJhIjoiY21obGZzb2ppMWwxazJqcHRpaTJhbTZnciJ9.vTBrfzWDPi4DQ86JEKULiA</string>
+	<key>UIBackgroundModes</key>
+	<array/>
+</dict>
+</plist>
