@@ -1,5 +1,5 @@
 {
-  "originHash" : "f650782c01d18e75d8337f6815ac2a52294444239347885d73551e28b1baa4d1",
+  "originHash" : "fb5d010a2f373f87ab582c25a1acab1840b70a6059ebc606b7bfd609f7a951a4",
   "pins" : [
     {
       "identity" : "mapbox-common-ios",
@@ -44,6 +44,15 @@
       "state" : {
         "revision" : "f2e28454c4e3b3596903027fcad13f09a5ac1c91",
         "version" : "324.16.1"
+      }
+    },
+    {
+      "identity" : "mapboxgeocoder.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mapbox/MapboxGeocoder.swift",
+      "state" : {
+        "revision" : "10c497840c9e1142194563f402ddc903310a935d",
+        "version" : "0.15.0"
       }
     },
     {

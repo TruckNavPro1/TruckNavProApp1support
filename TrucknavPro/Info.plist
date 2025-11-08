@@ -6,6 +6,8 @@
 	<string>Please enable precise location. Turn-by-turn directions only work when precise location data is available.</string>
 	<key>MBXAccessToken</key>
 	<string>pk.eyJ1IjoiZHRyZXZvbjJrMjAiLCJhIjoiY21obGZzb2ppMWwxazJqcHRpaTJhbTZnciJ9.vTBrfzWDPi4DQ86JEKULiA</string>
+	<key>TomTomAPIKey</key>
+	<string>Nq78WMNfPT4Xvm8jV7KiYGp6nb55VDkO</string>
 	<key>UIBackgroundModes</key>
 	<array/>
 </dict>
