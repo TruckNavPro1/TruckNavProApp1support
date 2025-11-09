@@ -67,6 +67,22 @@ class MapViewController: UIViewController {
         return button
     }()
 
+    private lazy var settingsButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        button.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: config), for: .normal)
+        button.backgroundColor = .systemBackground
+        button.tintColor = .systemBlue
+        button.layer.cornerRadius = 22
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        return button
+    }()
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -81,9 +97,11 @@ class MapViewController: UIViewController {
         setupFreeDriveUI()
         setupRoutePreviewUI()
         setupRecenterButton()
+        setupSettingsButton()
 
         // Ensure proper z-ordering (bring controls to front)
         view.bringSubviewToFront(recenterButton)
+        view.bringSubviewToFront(settingsButton)
         view.bringSubviewToFront(speedLimitView)
         view.bringSubviewToFront(roadNameLabel)
 
@@ -150,7 +168,17 @@ class MapViewController: UIViewController {
         )
         navigationMapView.frame = view.bounds
         navigationMapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        navigationMapView.puckType = .puck2D(.navigationDefault)
+
+        // Use 3D puck (sphere) for user location
+        var puck3DConfig = Puck3DConfiguration(
+            model: Model(
+                uri: URL(string: "https://raw.githubusercontent.com/mapbox/mapbox-gl-native/master/platform/ios/app/Assets.xcassets/puck3d.glb")
+            ),
+            modelScale: .constant([10, 10, 10]),
+            modelRotation: .constant([0, 0, 0])
+        )
+        navigationMapView.puckType = .puck3D(puck3DConfig)
+
         view.addSubview(navigationMapView)
 
         navigationMapView.mapView.mapboxMap.onStyleLoaded.observeNext { [weak self] _ in
@@ -250,10 +278,12 @@ class MapViewController: UIViewController {
 
         var searchOptions = SearchOptions()
         searchOptions.proximity = userLocation
+        searchOptions.limit = UserDefaults.standard.integer(forKey: "POIResultCount") > 0 ?
+            UserDefaults.standard.integer(forKey: "POIResultCount") : 10
 
         searchController.searchOptions = searchOptions
 
-        print("📍 Search proximity set to: lat=\(String(format: "%.4f", userLocation.latitude)), lon=\(String(format: "%.4f", userLocation.longitude))")
+        print("📍 Search proximity set to: lat=\(String(format: "%.4f", userLocation.latitude)), lon=\(String(format: "%.4f", userLocation.longitude)), limit=\(searchOptions.limit ?? 10)")
     }
 
     private func setupRecenterButton() {
@@ -280,6 +310,28 @@ class MapViewController: UIViewController {
 
         navigationMapView.mapView.camera.ease(to: cameraOptions, duration: 0.5)
         print("📍 Map recentered to current location")
+    }
+
+    private func setupSettingsButton() {
+        view.addSubview(settingsButton)
+
+        NSLayoutConstraint.activate([
+            settingsButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            settingsButton.bottomAnchor.constraint(equalTo: recenterButton.topAnchor, constant: -16),
+            settingsButton.widthAnchor.constraint(equalToConstant: 44),
+            settingsButton.heightAnchor.constraint(equalToConstant: 44)
+        ])
+    }
+
+    @objc private func openSettings() {
+        let settingsVC = SettingsViewController()
+        settingsVC.modalPresentationStyle = .pageSheet
+        if let sheet = settingsVC.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(settingsVC, animated: true)
+        print("⚙️ Opening settings")
     }
 
     // MARK: - Free-Drive Mode UI
@@ -511,6 +563,8 @@ class MapViewController: UIViewController {
         speedLimitView.isHidden = true
         roadNameLabel.isHidden = true
         panelController.view.isHidden = true
+        recenterButton.isHidden = true
+        settingsButton.isHidden = true
 
         // Configure navigation options using the navigation provider
         let navigationOptions = NavigationOptions(
@@ -687,6 +741,7 @@ extension MapViewController: NavigationViewControllerDelegate {
         // Show search panel again
         panelController.view.isHidden = false
         recenterButton.isHidden = false
+        settingsButton.isHidden = false
 
         // Hide route preview if visible
         routePreviewContainer.isHidden = true
