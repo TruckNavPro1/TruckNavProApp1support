@@ -51,6 +51,7 @@ class WeatherService {
             return ""
         }
         return apiKey
+
     }
 
     func fetchWeather(for coordinate: CLLocationCoordinate2D, completion: @escaping (Result<WeatherInfo, Error>) -> Void) {
@@ -91,12 +92,17 @@ class WeatherService {
 
             do {
                 let weatherData = try JSONDecoder().decode(WeatherData.self, from: data)
-                let temperature = Int(weatherData.main.temp)
-                let high = Int(weatherData.main.tempMax)
-                let low = Int(weatherData.main.tempMin)
+                let temperature = Int(round(weatherData.main.temp))
+                let high = Int(round(weatherData.main.tempMax))
+                let low = Int(round(weatherData.main.tempMin))
                 let condition = weatherData.weather.first?.description.capitalized ?? "Unknown"
                 let weatherId = weatherData.weather.first?.id ?? 800
                 let symbolName = self.weatherSymbol(for: weatherId)
+
+                print("🌡️ Weather data received:")
+                print("   Temperature: \(temperature)°F (raw: \(weatherData.main.temp))")
+                print("   High: \(high)°F, Low: \(low)°F")
+                print("   Condition: \(condition)")
 
                 let weatherInfo = WeatherInfo(
                     temperature: temperature,
@@ -111,6 +117,7 @@ class WeatherService {
                     completion(.success(weatherInfo))
                 }
             } catch {
+                print("❌ Weather decode error: \(error)")
                 completion(.failure(error))
             }
         }.resume()

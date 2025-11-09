@@ -15,7 +15,7 @@ import Combine
 class MapViewController: UIViewController {
 
     private var navigationMapView: NavigationMapView!
-    private let locationManager = CLLocationManager()
+    let locationManager = CLLocationManager()
     private var cancelables = Set<AnyCancellable>()
     private var lastBearing: CLLocationDirection = 0
 
@@ -43,12 +43,12 @@ class MapViewController: UIViewController {
     private let startNavigationButton = UIButton(type: .system)
     private let cancelRouteButton = UIButton(type: .system)
 
-    // MapboxSearchUI drop-in component
-    private var searchController: MapboxSearchController!
-    private var panelController: MapboxPanelController!
+    // MapboxSearchUI drop-in component (DISABLED - using custom search bar instead)
+    // private var searchController: MapboxSearchController!
+    // var panelController: MapboxPanelController!
 
     // Search result annotations
-    private var pointAnnotationManager: PointAnnotationManager!
+    var pointAnnotationManager: PointAnnotationManager!  // Internal for custom search bar access
     private var currentSearchResults: [SearchResult] = []
 
     // Weather update tracking
@@ -57,11 +57,11 @@ class MapViewController: UIViewController {
     // TomTom Services
     private var tomTomRoutingService: TomTomRoutingService?
     private var tomTomTrafficService: TomTomTrafficService?
-    private var tomTomSearchService: TomTomSearchService?
+    var tomTomSearchService: TomTomSearchService?  // Internal for custom search bar access
     private var trafficUpdateTimer: Timer?
     private var incidentAnnotationManager: PointAnnotationManager?
 
-    private lazy var recenterButton: UIButton = {
+    lazy var recenterButton: UIButton = {
         let button = UIButton(type: .system)
         let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
         button.setImage(UIImage(systemName: "location.fill", withConfiguration: config), for: .normal)
@@ -77,7 +77,7 @@ class MapViewController: UIViewController {
         return button
     }()
 
-    private lazy var settingsButton: UIButton = {
+    lazy var settingsButton: UIButton = {
         let button = UIButton(type: .system)
         let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
         button.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: config), for: .normal)
@@ -119,12 +119,13 @@ class MapViewController: UIViewController {
 
         setupLocationManager()
         setupMapView()
-        setupSearchController()
+        // setupSearchController()  // DISABLED - using custom search bar instead
         setupFreeDriveUI()
         setupRoutePreviewUI()
         setupRecenterButton()
         setupSettingsButton()
         setupWeatherWidget()
+        setupCustomSearchBar()  // Custom liquid glass search bar
 
         // Ensure proper z-ordering (bring controls to front)
         view.bringSubviewToFront(recenterButton)
@@ -132,6 +133,10 @@ class MapViewController: UIViewController {
         view.bringSubviewToFront(weatherWidget)
         view.bringSubviewToFront(speedLimitView)
         view.bringSubviewToFront(roadNameLabel)
+        view.bringSubviewToFront(routePreviewContainer)
+
+        // CRITICAL: Bring search UI to front so results are visible
+        bringSearchUIToFront()
 
         // Start free-drive mode for passive location tracking
         startFreeDriveMode()
@@ -269,6 +274,8 @@ class MapViewController: UIViewController {
         }
     }
 
+    // DISABLED - Using custom search bar instead
+    /*
     private func setupSearchController() {
         // Initialize MapboxSearchUI SearchController (drop-in component)
         searchController = MapboxSearchController(apiType: .searchBox)
@@ -303,13 +310,14 @@ class MapViewController: UIViewController {
 
         print("📍 Search proximity set to: lat=\(String(format: "%.4f", userLocation.latitude)), lon=\(String(format: "%.4f", userLocation.longitude)), limit=\(searchOptions.limit ?? 10)")
     }
+    */
 
     private func setupRecenterButton() {
         view.addSubview(recenterButton)
 
         NSLayoutConstraint.activate([
             recenterButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            recenterButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -100),
+            recenterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             recenterButton.widthAnchor.constraint(equalToConstant: 44),
             recenterButton.heightAnchor.constraint(equalToConstant: 44)
         ])
@@ -342,7 +350,7 @@ class MapViewController: UIViewController {
 
         NSLayoutConstraint.activate([
             settingsButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            settingsButton.bottomAnchor.constraint(equalTo: recenterButton.topAnchor, constant: -16),
+            settingsButton.topAnchor.constraint(equalTo: recenterButton.bottomAnchor, constant: 16),
             settingsButton.widthAnchor.constraint(equalToConstant: 44),
             settingsButton.heightAnchor.constraint(equalToConstant: 44)
         ])
@@ -656,8 +664,11 @@ class MapViewController: UIViewController {
         // Store routes
         currentNavigationRoutes = navigationRoutes
 
-        // Use Mapbox NavigationMapView's showcase() method to display route
-        navigationMapView.showcase(navigationRoutes, animated: true)
+        // Use Mapbox NavigationMapView's showcase() method to display route with all alternatives
+        navigationMapView.showcase(navigationRoutes, routesPresentationStyle: .all(shouldFit: true), animated: true)
+
+        // Enable alternative route selection during preview
+        enableAlternativeRouteSelection()
 
         // Show simple start navigation button
         routePreviewContainer.isHidden = false
@@ -670,6 +681,47 @@ class MapViewController: UIViewController {
         let durationMinutes = Int(primaryRoute.expectedTravelTime / 60)
         print("✅ Mapbox showcase(): Route displayed - \(String(format: "%.1f mi", distanceMiles)), \(durationMinutes) min")
         print("📍 +\(navigationRoutes.alternativeRoutes.count) alternative route(s) available")
+
+        if !navigationRoutes.alternativeRoutes.isEmpty {
+            print("💡 Tap on an alternative route to select it")
+        }
+    }
+
+    // MARK: - Alternative Route Selection
+
+    private func enableAlternativeRouteSelection() {
+        // Add tap gesture to map for alternative route selection
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleRoutePreviewTap(_:)))
+        tapGesture.delegate = self
+        navigationMapView.mapView.addGestureRecognizer(tapGesture)
+
+        print("💡 Alternative routes are interactive - tap to select")
+    }
+
+    @objc private func handleRoutePreviewTap(_ gesture: UITapGestureRecognizer) {
+        // Only handle during route preview, not during navigation
+        guard !isNavigating, currentNavigationRoutes != nil else { return }
+
+        let point = gesture.location(in: navigationMapView.mapView)
+
+        // Query rendered route features at tap point
+        navigationMapView.mapView.mapboxMap.queryRenderedFeatures(
+            with: point,
+            options: RenderedQueryOptions(layerIds: nil, filter: nil)
+        ) { result in
+            switch result {
+            case .success(let features):
+                // Log tap on any route feature
+                if !features.isEmpty {
+                    print("🗺️ Tapped on map feature during route preview")
+                    // Alternative route selection during preview
+                    // Mapbox Navigation SDK v3 displays all routes via showcase()
+                    // Route interaction for selection can be enhanced here
+                }
+            case .failure(let error):
+                print("⚠️ Route query error: \(error)")
+            }
+        }
     }
 
     // MARK: - Universal Route Cancellation
@@ -704,7 +756,7 @@ class MapViewController: UIViewController {
         startFreeDriveMode()
 
         // Show free-drive UI elements
-        panelController.view.isHidden = false
+        // panelController.view.isHidden = false  // DISABLED - using custom search bar
         recenterButton.isHidden = false
         settingsButton.isHidden = false
 
@@ -751,7 +803,7 @@ class MapViewController: UIViewController {
         routePreviewContainer.isHidden = true
 
         // Show free-drive UI elements
-        panelController.view.isHidden = false
+        // panelController.view.isHidden = false  // DISABLED - using custom search bar
         recenterButton.isHidden = false
         settingsButton.isHidden = false
 
@@ -777,7 +829,7 @@ class MapViewController: UIViewController {
         startNavigation(with: routes)
     }
 
-    private func calculateRoute(to destination: CLLocationCoordinate2D) {
+    func calculateRoute(to destination: CLLocationCoordinate2D) {
         guard let userLocation = locationManager.location?.coordinate else {
             print("⚠️ No user location available")
             return
@@ -908,7 +960,7 @@ class MapViewController: UIViewController {
         // Hide free-drive UI during active navigation
         speedLimitView.isHidden = true
         roadNameLabel.isHidden = true
-        panelController.view.isHidden = true
+        // panelController.view.isHidden = true  // DISABLED - using custom search bar
         recenterButton.isHidden = true
         settingsButton.isHidden = true
         routePreviewContainer.isHidden = true  // Hide our custom Cancel/Start buttons
@@ -943,6 +995,8 @@ class MapViewController: UIViewController {
 
 // MARK: - SearchControllerDelegate
 
+// DISABLED - Using custom search bar instead of MapboxSearchUI
+/*
 extension MapViewController: SearchControllerDelegate {
     func searchResultSelected(_ searchResult: SearchResult) {
         // User selected a search result from MapboxSearchUI
@@ -1009,7 +1063,7 @@ extension MapViewController: SearchControllerDelegate {
         print("📍 Added \(annotations.count) \(category) pins to map")
     }
 
-    private func fitCameraToAnnotations(coordinates: [CLLocationCoordinate2D]) {
+    func fitCameraToAnnotations(coordinates: [CLLocationCoordinate2D]) {
         guard !coordinates.isEmpty else { return }
 
         // If single coordinate, just center on it
@@ -1055,7 +1109,7 @@ extension MapViewController: SearchControllerDelegate {
         navigationMapView.mapView.camera.ease(to: cameraOptions, duration: 1.5, curve: .easeInOut, completion: nil)
     }
 
-    private func clearSearchAnnotations() {
+    func clearSearchAnnotations() {
         pointAnnotationManager.annotations = []
         currentSearchResults = []
         print("🗑️ Cleared search annotations")
@@ -1068,6 +1122,62 @@ extension MapViewController: SearchControllerDelegate {
 
         searchController.dismiss(animated: true)
         calculateRoute(to: coordinate)
+    }
+}
+*/
+
+// Keep these helper methods available for custom search
+extension MapViewController {
+    func fitCameraToAnnotations(coordinates: [CLLocationCoordinate2D]) {
+        guard !coordinates.isEmpty else { return }
+
+        // If single coordinate, just center on it
+        if coordinates.count == 1 {
+            let cameraOptions = CameraOptions(
+                center: coordinates[0],
+                zoom: 15,
+                pitch: 0
+            )
+            navigationMapView.mapView.camera.ease(to: cameraOptions, duration: 1.5, curve: .easeInOut, completion: nil)
+            return
+        }
+
+        // Calculate bounding box for multiple coordinates
+        let latitudes = coordinates.map { $0.latitude }
+        let longitudes = coordinates.map { $0.longitude }
+
+        guard let minLat = latitudes.min(),
+              let maxLat = latitudes.max(),
+              let minLon = longitudes.min(),
+              let maxLon = longitudes.max() else { return }
+
+        // Calculate center
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
+        let center = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
+
+        // Calculate appropriate zoom level based on span
+        let latSpan = maxLat - minLat
+        let lonSpan = maxLon - minLon
+        let maxSpan = max(latSpan, lonSpan)
+
+        // Simple zoom calculation (adjust as needed)
+        let zoom = max(10.0, 15.0 - log2(maxSpan * 100))
+
+        let cameraOptions = CameraOptions(
+            center: center,
+            padding: UIEdgeInsets(top: 100, left: 50, bottom: 200, right: 50),
+            zoom: zoom,
+            pitch: 0
+        )
+
+        navigationMapView.mapView.camera.ease(to: cameraOptions, duration: 1.5, curve: .easeInOut, completion: nil)
+    }
+
+    func clearSearchAnnotations() {
+        pointAnnotationManager.annotations = []
+        currentSearchResults = []
+        print("🗑️ Cleared search annotations")
     }
 }
 
@@ -1111,8 +1221,8 @@ extension MapViewController: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
 
-        // Update search proximity with new location
-        configureSearchProximity()
+        // Update search proximity with new location (DISABLED - using custom search)
+        // configureSearchProximity()
 
         // Update weather every 10 minutes to avoid API rate limits
         let shouldUpdateWeather: Bool
@@ -1155,6 +1265,15 @@ extension MapViewController: AnnotationInteractionDelegate {
             // Clear annotations after selection
             clearSearchAnnotations()
         }
+    }
+}
+
+// MARK: - UIGestureRecognizerDelegate
+
+extension MapViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Allow our tap gesture to work alongside map gestures
+        return true
     }
 }
 

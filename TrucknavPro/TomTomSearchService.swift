@@ -63,9 +63,15 @@ class TomTomSearchService {
 
     init(apiKey: String) {
         self.apiKey = apiKey
+        print("🔑 TomTom Search Service initialized with API key: \(apiKey.prefix(10))...")
+
+        // Verify API key format
+        if apiKey.isEmpty || apiKey == "YOUR_API_KEY_HERE" {
+            print("⚠️ WARNING: TomTom API key not configured!")
+        }
     }
 
-    // MARK: - Search by Category
+    // MARK: - Search by Category (using Fuzzy Search - more reliable)
 
     func searchCategory(
         _ category: TruckCategory,
@@ -74,24 +80,40 @@ class TomTomSearchService {
         limit: Int = 20,
         completion: @escaping (Result<[TruckSearchResult], Error>) -> Void
     ) {
-        let urlString = "\(baseURL)/categorySearch/\(category.rawValue).json?key=\(apiKey)&lat=\(coordinate.latitude)&lon=\(coordinate.longitude)&radius=\(radius)&limit=\(limit)"
+        // Use fuzzy search with category-specific query terms (more reliable than categorySearch)
+        let queryTerm = getCategoryQueryTerm(for: category)
+
+        // Build URL with fuzzy search endpoint
+        let urlString = "\(baseURL)/search/\(queryTerm).json?key=\(apiKey)&lat=\(coordinate.latitude)&lon=\(coordinate.longitude)&radius=\(radius)&limit=\(limit)&typeahead=false"
 
         guard let url = URL(string: urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else {
             completion(.failure(NSError(domain: "TomTomSearch", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
             return
         }
 
-        print("🔍 TomTom Search: \(category.displayName) near \(coordinate)")
+        print("🔍 TomTom Fuzzy Search: \(category.displayName) (\(queryTerm)) near \(coordinate)")
+        print("🌐 URL: \(url.absoluteString)")
 
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
+                print("❌ Network error: \(error.localizedDescription)")
                 completion(.failure(error))
                 return
             }
 
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 Response status: \(httpResponse.statusCode)")
+            }
+
             guard let data = data else {
+                print("❌ No data received")
                 completion(.failure(NSError(domain: "TomTomSearch", code: -2, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
                 return
+            }
+
+            // Debug: Print response
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("📦 Response preview: \(jsonString.prefix(500))")
             }
 
             do {
@@ -102,7 +124,7 @@ class TomTomSearchService {
                     TruckSearchResult(
                         id: result.id,
                         name: result.poi?.name ?? result.address?.freeformAddress ?? "Unknown",
-                        category: result.poi?.categories?.first ?? "Unknown",
+                        category: result.poi?.categories?.first ?? category.displayName,
                         distance: result.dist ?? 0,
                         coordinate: CLLocationCoordinate2D(
                             latitude: result.position.lat,
@@ -118,12 +140,29 @@ class TomTomSearchService {
                 completion(.success(results))
             } catch {
                 print("❌ TomTom Search decode error: \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("📄 Raw JSON: \(jsonString)")
+                }
                 completion(.failure(error))
             }
         }.resume()
     }
 
-    // MARK: - Free Text Search
+    // Get search query term for category
+    private func getCategoryQueryTerm(for category: TruckCategory) -> String {
+        switch category {
+        case .truckStop: return "truck stop"
+        case .restArea: return "rest area"
+        case .weighStation: return "weigh station"
+        case .truckParking: return "truck parking"
+        case .fuelStation: return "gas station"
+        case .mechanic: return "truck repair"
+        case .hotel: return "hotel"
+        case .restaurant: return "restaurant"
+        }
+    }
+
+    // MARK: - Free Text Search (Fuzzy Search)
 
     func searchText(
         _ query: String,
@@ -132,22 +171,36 @@ class TomTomSearchService {
         completion: @escaping (Result<[TruckSearchResult], Error>) -> Void
     ) {
         let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let urlString = "\(baseURL)/search/\(encodedQuery).json?key=\(apiKey)&lat=\(coordinate.latitude)&lon=\(coordinate.longitude)&limit=\(limit)&typeahead=true"
+        let urlString = "\(baseURL)/search/\(encodedQuery).json?key=\(apiKey)&lat=\(coordinate.latitude)&lon=\(coordinate.longitude)&limit=\(limit)&typeahead=false"
 
         guard let url = URL(string: urlString) else {
             completion(.failure(NSError(domain: "TomTomSearch", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
             return
         }
 
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        print("🔍 TomTom Fuzzy Search: '\(query)' near \(coordinate)")
+        print("🌐 URL: \(url.absoluteString)")
+
+        URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
+                print("❌ Network error: \(error.localizedDescription)")
                 completion(.failure(error))
                 return
             }
 
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 Response status: \(httpResponse.statusCode)")
+            }
+
             guard let data = data else {
+                print("❌ No data received")
                 completion(.failure(NSError(domain: "TomTomSearch", code: -2, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
                 return
+            }
+
+            // Debug: Print response preview
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("📦 Response preview: \(jsonString.prefix(500))")
             }
 
             do {
@@ -158,7 +211,7 @@ class TomTomSearchService {
                     TruckSearchResult(
                         id: result.id,
                         name: result.poi?.name ?? result.address?.freeformAddress ?? "Unknown",
-                        category: result.poi?.categories?.first ?? "Unknown",
+                        category: result.poi?.categories?.first ?? "Place",
                         distance: result.dist ?? 0,
                         coordinate: CLLocationCoordinate2D(
                             latitude: result.position.lat,
@@ -170,8 +223,13 @@ class TomTomSearchService {
                     )
                 }
 
+                print("✅ Found \(results.count) results for '\(query)'")
                 completion(.success(results))
             } catch {
+                print("❌ TomTom Search decode error: \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("📄 Raw JSON: \(jsonString)")
+                }
                 completion(.failure(error))
             }
         }.resume()
