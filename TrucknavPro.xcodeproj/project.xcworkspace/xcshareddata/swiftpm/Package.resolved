@@ -1,5 +1,5 @@
 {
-  "originHash" : "fb5d010a2f373f87ab582c25a1acab1840b70a6059ebc606b7bfd609f7a951a4",
+  "originHash" : "e2123bc1045f167632b7ffd4efa54e62c43cc956b1a4d37b518ac55aeb89a753",
   "pins" : [
     {
       "identity" : "mapbox-common-ios",
@@ -44,6 +44,15 @@
       "state" : {
         "revision" : "f2e28454c4e3b3596903027fcad13f09a5ac1c91",
         "version" : "324.16.1"
+      }
+    },
+    {
+      "identity" : "mapbox-search-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mapbox/mapbox-search-ios.git",
+      "state" : {
+        "revision" : "01d64d4a1cbefcb04355a0af884d9c30b89716e7",
+        "version" : "2.16.1"
       }
     },
     {

@@ -5,16 +5,16 @@
 
 import UIKit
 import MapboxMaps
-import MapboxGeocoder
 import MapboxDirections
 import MapboxNavigationCore
 import MapboxNavigationUIKit
+import MapboxSearchUI
 import CoreLocation
 import Combine
 
 class MapViewController: UIViewController {
 
-    private var mapView: MapView!
+    private var navigationMapView: NavigationMapView!
     private let locationManager = CLLocationManager()
     private var cancelables = Set<AnyCancelable>()
     private var lastBearing: CLLocationDirection = 0
@@ -31,31 +31,25 @@ class MapViewController: UIViewController {
 
     // Navigation state
     private var isNavigating: Bool = false
+    private var isFreeDriveActive: Bool = false
     private var currentNavigationRoutes: NavigationRoutes?
 
-    // Free-drive mode UI
-    private let speedLimitView = UILabel()
+    // Free-drive mode UI (Mapbox drop-in components)
+    private let speedLimitView = SpeedLimitView()
     private let roadNameLabel = UILabel()
 
-    // Route preview UI
+    // Simple route preview buttons (Mapbox showcase() handles the route display)
     private let routePreviewContainer = UIView()
     private let startNavigationButton = UIButton(type: .system)
-    private let routeInfoStack = UIStackView()
+    private let cancelRouteButton = UIButton(type: .system)
 
-    // Search components
-    private let searchContainer = UIView()
-    private let searchTextField = UITextField()
-    private let searchResultsTable = UITableView()
-    private var searchResults: [GeocodedPlacemark] = []
-    private var geocoder: Geocoder!
-    private var currentGeocodeTask: URLSessionDataTask?
+    // MapboxSearchUI drop-in component
+    private var searchController: MapboxSearchController!
+    private var panelController: MapboxPanelController!
 
-    // Navigation UI
-    private let instructionView = NavigationInstructionView()
-    private let bottomInfoView = UIView()
-    private let etaLabel = UILabel()
-    private let distanceLabel = UILabel()
-    private let speedLabel = UILabel()
+    // Search result annotations
+    private var pointAnnotationManager: PointAnnotationManager!
+    private var currentSearchResults: [SearchResult] = []
 
     private lazy var recenterButton: UIButton = {
         let button = UIButton(type: .system)
@@ -83,18 +77,12 @@ class MapViewController: UIViewController {
 
         setupLocationManager()
         setupMapView()
-        setupSearchUI()
-        setupSearchResultsTable()
-        setupNavigationUI()
+        setupSearchController()
         setupFreeDriveUI()
         setupRoutePreviewUI()
         setupRecenterButton()
 
         // Ensure proper z-ordering (bring controls to front)
-        view.bringSubviewToFront(searchContainer)
-        view.bringSubviewToFront(searchResultsTable)
-        view.bringSubviewToFront(instructionView)
-        view.bringSubviewToFront(bottomInfoView)
         view.bringSubviewToFront(recenterButton)
         view.bringSubviewToFront(speedLimitView)
         view.bringSubviewToFront(roadNameLabel)
@@ -149,23 +137,28 @@ class MapViewController: UIViewController {
     }
 
     private func setupMapView() {
-        // Use Mapbox Standard style for modern look and feel
-        let mapInitOptions = MapInitOptions(styleURI: .standard)
-        mapView = MapView(frame: view.bounds, mapInitOptions: mapInitOptions)
-        mapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(mapView)
+        // Create NavigationMapView for route preview and navigation (v3 syntax)
+        navigationMapView = NavigationMapView(
+            location: navigationProvider.mapboxNavigation.navigation().locationMatching
+                .map(\.mapMatchingResult.enhancedLocation)
+                .eraseToAnyPublisher(),
+            routeProgress: navigationProvider.mapboxNavigation.navigation().routeProgress
+                .map(\.?.routeProgress)
+                .eraseToAnyPublisher(),
+            heading: navigationProvider.mapboxNavigation.navigation().heading,
+            predictiveCacheManager: navigationProvider.predictiveCacheManager
+        )
+        navigationMapView.frame = view.bounds
+        navigationMapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        navigationMapView.puckType = .puck2D(.navigationDefault)
+        view.addSubview(navigationMapView)
 
-        // Initialize Geocoder with Mapbox access token
-        guard let mapboxToken = Bundle.main.object(forInfoDictionaryKey: "MBXAccessToken") as? String else {
-            fatalError("Mapbox access token not found in Info.plist")
-        }
-        geocoder = Geocoder(accessToken: mapboxToken)
-
-        mapView.mapboxMap.onStyleLoaded.observeNext { [weak self] _ in
+        navigationMapView.mapView.mapboxMap.onStyleLoaded.observeNext { [weak self] _ in
             self?.configurePuck()
-            self?.configureNavigationCamera()
             self?.enable3DBuildings()
-            print("✅ Free-drive navigation active")
+            self?.setupAnnotationManager()
+            self?.configureDayNightMode()
+            print("✅ NavigationMapView loaded - ready for free-drive")
         }.store(in: &cancelables)
     }
 
@@ -173,36 +166,8 @@ class MapViewController: UIViewController {
         var puckConfig = Puck2DConfiguration()
         puckConfig.showsAccuracyRing = false
         puckConfig.pulsing = .default
-        mapView.location.options.puckType = .puck2D(puckConfig)
-        mapView.location.options.puckBearingEnabled = true
-    }
-
-    private func configureNavigationCamera() {
-        let pitch: CGFloat = 60
-        let zoom: CGFloat = 17
-
-        mapView.location.onLocationChange.observe { [weak self] locations in
-            guard let self = self, let location = locations.last else { return }
-
-            var bearing = self.lastBearing
-            if let clLocation = location as? CLLocation, clLocation.course >= 0 {
-                bearing = clLocation.course
-                self.lastBearing = bearing
-            }
-
-            let cameraOptions = CameraOptions(
-                center: location.coordinate,
-                padding: UIEdgeInsets(top: 0, left: 0, bottom: self.view.bounds.height * 0.4, right: 0),
-                zoom: zoom,
-                bearing: bearing,
-                pitch: pitch
-            )
-
-            self.mapView.camera.ease(to: cameraOptions, duration: 1.0)
-
-            // Free-drive mode camera tracking
-            // When NavigationViewController is active, it handles its own camera
-        }.store(in: &self.cancelables)
+        navigationMapView.mapView.location.options.puckType = .puck2D(puckConfig)
+        navigationMapView.mapView.location.options.puckBearingEnabled = true
     }
 
     private func enable3DBuildings() {
@@ -215,138 +180,80 @@ class MapViewController: UIViewController {
             layer.fillExtrusionColor = .constant(StyleColor(.lightGray))
             layer.fillExtrusionOpacity = .constant(0.6)
 
-            try mapView.mapboxMap.addLayer(layer)
+            try navigationMapView.mapView.mapboxMap.addLayer(layer)
             print("✅ 3D buildings enabled")
         } catch {
             print("⚠️ 3D buildings error: \(error)")
         }
     }
 
-    private func setupSearchUI() {
-        // Search container with shadow
-        searchContainer.backgroundColor = .systemBackground
-        searchContainer.layer.cornerRadius = 12
-        searchContainer.layer.shadowColor = UIColor.black.cgColor
-        searchContainer.layer.shadowOpacity = 0.15
-        searchContainer.layer.shadowOffset = CGSize(width: 0, height: 2)
-        searchContainer.layer.shadowRadius = 8
-        searchContainer.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(searchContainer)
+    private func setupAnnotationManager() {
+        // Create annotation manager for search results
+        pointAnnotationManager = navigationMapView.mapView.annotations.makePointAnnotationManager()
 
-        // Search icon
-        let searchIcon = UIImageView(image: UIImage(systemName: "magnifyingglass"))
-        searchIcon.tintColor = .secondaryLabel
-        searchIcon.translatesAutoresizingMaskIntoConstraints = false
-        searchContainer.addSubview(searchIcon)
+        // Handle annotation taps via delegate
+        pointAnnotationManager.delegate = self
 
-        // Search text field
-        searchTextField.placeholder = "Where to?"
-        searchTextField.font = .systemFont(ofSize: 16)
-        searchTextField.borderStyle = .none
-        searchTextField.returnKeyType = .search
-        searchTextField.clearButtonMode = .whileEditing
-        searchTextField.translatesAutoresizingMaskIntoConstraints = false
-        searchTextField.delegate = self
-        searchTextField.addTarget(self, action: #selector(searchTextDidChange), for: .editingChanged)
-        searchContainer.addSubview(searchTextField)
-
-        NSLayoutConstraint.activate([
-            searchContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            searchContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            searchContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            searchContainer.heightAnchor.constraint(equalToConstant: 56),
-
-            searchIcon.leadingAnchor.constraint(equalTo: searchContainer.leadingAnchor, constant: 16),
-            searchIcon.centerYAnchor.constraint(equalTo: searchContainer.centerYAnchor),
-            searchIcon.widthAnchor.constraint(equalToConstant: 20),
-            searchIcon.heightAnchor.constraint(equalToConstant: 20),
-
-            searchTextField.leadingAnchor.constraint(equalTo: searchIcon.trailingAnchor, constant: 12),
-            searchTextField.trailingAnchor.constraint(equalTo: searchContainer.trailingAnchor, constant: -16),
-            searchTextField.centerYAnchor.constraint(equalTo: searchContainer.centerYAnchor)
-        ])
+        print("✅ Annotation manager initialized")
     }
 
-    @objc private func searchTextDidChange() {
-        performSearch(query: searchTextField.text ?? "")
+    private func configureDayNightMode() {
+        // Set map style based on system color scheme
+        let isDarkMode = traitCollection.userInterfaceStyle == .dark
+        let lightPreset = isDarkMode ? "night" : "day"
+
+        do {
+            try navigationMapView.mapView.mapboxMap.setStyleImportConfigProperty(
+                for: "basemap",
+                config: "lightPreset",
+                value: lightPreset
+            )
+            print("🌓 Map style set to \(lightPreset) mode")
+        } catch {
+            print("⚠️ Error setting map light preset: \(error)")
+        }
     }
 
-    private func setupSearchResultsTable() {
-        searchResultsTable.delegate = self
-        searchResultsTable.dataSource = self
-        searchResultsTable.register(UITableViewCell.self, forCellReuseIdentifier: "SearchResultCell")
-        searchResultsTable.translatesAutoresizingMaskIntoConstraints = false
-        searchResultsTable.isHidden = true
-        searchResultsTable.layer.cornerRadius = 8
-        searchResultsTable.layer.shadowColor = UIColor.black.cgColor
-        searchResultsTable.layer.shadowOpacity = 0.2
-        searchResultsTable.layer.shadowOffset = CGSize(width: 0, height: 2)
-        searchResultsTable.layer.shadowRadius = 4
-        view.addSubview(searchResultsTable)
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
 
-        NSLayoutConstraint.activate([
-            searchResultsTable.topAnchor.constraint(equalTo: searchContainer.bottomAnchor, constant: 8),
-            searchResultsTable.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            searchResultsTable.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            searchResultsTable.heightAnchor.constraint(equalToConstant: 300)
-        ])
+        // Update map style when system appearance changes
+        if traitCollection.userInterfaceStyle != previousTraitCollection?.userInterfaceStyle {
+            configureDayNightMode()
+        }
     }
 
-    private func setupNavigationUI() {
-        // Instruction view
-        instructionView.translatesAutoresizingMaskIntoConstraints = false
-        instructionView.isHidden = true
-        view.addSubview(instructionView)
+    private func setupSearchController() {
+        // Initialize MapboxSearchUI SearchController (drop-in component)
+        searchController = MapboxSearchController(apiType: .searchBox)
+        searchController.delegate = self
 
-        // Bottom info view
-        bottomInfoView.backgroundColor = .systemBackground
-        bottomInfoView.layer.cornerRadius = 12
-        bottomInfoView.layer.shadowColor = UIColor.black.cgColor
-        bottomInfoView.layer.shadowOpacity = 0.2
-        bottomInfoView.layer.shadowOffset = CGSize(width: 0, height: -2)
-        bottomInfoView.layer.shadowRadius = 8
-        bottomInfoView.translatesAutoresizingMaskIntoConstraints = false
-        bottomInfoView.isHidden = true
-        view.addSubview(bottomInfoView)
+        // Configure search options with user location proximity
+        configureSearchProximity()
 
-        // ETA Label
-        etaLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        etaLabel.textColor = .label
-        etaLabel.translatesAutoresizingMaskIntoConstraints = false
-        bottomInfoView.addSubview(etaLabel)
+        // Wrap in MapboxPanelController (sliding drawer UI)
+        panelController = MapboxPanelController(rootViewController: searchController)
 
-        // Distance Label
-        distanceLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        distanceLabel.textColor = .label
-        distanceLabel.translatesAutoresizingMaskIntoConstraints = false
-        bottomInfoView.addSubview(distanceLabel)
+        // Add as child view controller to embed the search panel
+        addChild(panelController)
+        view.addSubview(panelController.view)
+        panelController.didMove(toParent: self)
 
-        // Speed Label
-        speedLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        speedLabel.textColor = .label
-        speedLabel.translatesAutoresizingMaskIntoConstraints = false
-        bottomInfoView.addSubview(speedLabel)
+        print("✅ MapboxSearchUI SearchController initialized with panel drawer")
+    }
 
-        NSLayoutConstraint.activate([
-            instructionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            instructionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            instructionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            instructionView.heightAnchor.constraint(equalToConstant: 120),
+    private func configureSearchProximity() {
+        guard let userLocation = locationManager.location?.coordinate else {
+            print("⚠️ User location not available yet for search proximity")
+            return
+        }
 
-            bottomInfoView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            bottomInfoView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            bottomInfoView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            bottomInfoView.heightAnchor.constraint(equalToConstant: 80),
+        var searchOptions = SearchOptions()
+        searchOptions.proximity = userLocation
 
-            etaLabel.topAnchor.constraint(equalTo: bottomInfoView.topAnchor, constant: 12),
-            etaLabel.leadingAnchor.constraint(equalTo: bottomInfoView.leadingAnchor, constant: 16),
+        searchController.searchOptions = searchOptions
 
-            distanceLabel.topAnchor.constraint(equalTo: etaLabel.bottomAnchor, constant: 8),
-            distanceLabel.leadingAnchor.constraint(equalTo: bottomInfoView.leadingAnchor, constant: 16),
-
-            speedLabel.topAnchor.constraint(equalTo: bottomInfoView.topAnchor, constant: 12),
-            speedLabel.trailingAnchor.constraint(equalTo: bottomInfoView.trailingAnchor, constant: -16)
-        ])
+        print("📍 Search proximity set to: lat=\(String(format: "%.4f", userLocation.latitude)), lon=\(String(format: "%.4f", userLocation.longitude))")
     }
 
     private func setupRecenterButton() {
@@ -371,22 +278,14 @@ class MapViewController: UIViewController {
             pitch: 60
         )
 
-        mapView.camera.ease(to: cameraOptions, duration: 0.5)
+        navigationMapView.mapView.camera.ease(to: cameraOptions, duration: 0.5)
         print("📍 Map recentered to current location")
     }
 
     // MARK: - Free-Drive Mode UI
 
     private func setupFreeDriveUI() {
-        // Speed Limit View
-        speedLimitView.font = .boldSystemFont(ofSize: 24)
-        speedLimitView.textColor = .white
-        speedLimitView.backgroundColor = .systemRed
-        speedLimitView.textAlignment = .center
-        speedLimitView.layer.cornerRadius = 8
-        speedLimitView.layer.borderWidth = 3
-        speedLimitView.layer.borderColor = UIColor.white.cgColor
-        speedLimitView.clipsToBounds = true
+        // Speed Limit View (Mapbox drop-in component)
         speedLimitView.translatesAutoresizingMaskIntoConstraints = false
         speedLimitView.isHidden = true
         view.addSubview(speedLimitView)
@@ -418,18 +317,46 @@ class MapViewController: UIViewController {
     }
 
     private func startFreeDriveMode() {
-        // Note: Free-drive mode will be enhanced in a future update
-        // For now, basic location tracking is provided through location manager
-        print("🆓 Free-drive mode - using basic location tracking")
+        // Start Mapbox free-drive mode (passive navigation)
+        // Note: Can be called multiple times - Mapbox handles restart internally
+        navigationProvider.tripSession().startFreeDrive()
+        isFreeDriveActive = true
 
-        // Speed limit and road name features will be added when
-        // the correct v3 API is confirmed for passive navigation
+        // Only create subscription once
+        if cancelables.isEmpty {
+            // Subscribe to location matching for speed limit and road name
+            navigationProvider.mapboxNavigation.navigation().locationMatching.sink { [weak self] state in
+                guard let self = self, !self.isNavigating else { return }
+
+                // Update speed limit (using Mapbox SpeedLimitView)
+                if let speedLimit = state.speedLimit.value {
+                    self.speedLimitView.signStandard = state.speedLimit.signStandard
+                    self.speedLimitView.speedLimit = speedLimit
+                    self.speedLimitView.isHidden = false
+                    print("🚦 Speed limit: \(speedLimit) \(state.speedLimit.signStandard)")
+                } else {
+                    self.speedLimitView.isHidden = true
+                }
+
+                // Update road name
+                if let roadName = state.roadName {
+                    self.roadNameLabel.text = roadName.text
+                    self.roadNameLabel.isHidden = false
+                    print("🛣️ Road: \(roadName.text)")
+                } else {
+                    self.roadNameLabel.isHidden = true
+                }
+            }.store(in: &cancelables)
+        }
+
+        print("🆓 Free-drive mode started - speed limits and road names enabled")
     }
 
     // MARK: - Route Preview UI
 
     private func setupRoutePreviewUI() {
-        // Container for route preview
+        // Simple container with just Cancel and Start buttons
+        // Mapbox NavigationMapView.showcase() handles route display on map
         routePreviewContainer.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
         routePreviewContainer.layer.cornerRadius = 16
         routePreviewContainer.layer.shadowColor = UIColor.black.cgColor
@@ -440,14 +367,18 @@ class MapViewController: UIViewController {
         routePreviewContainer.isHidden = true
         view.addSubview(routePreviewContainer)
 
-        // Route info stack
-        routeInfoStack.axis = .vertical
-        routeInfoStack.spacing = 12
-        routeInfoStack.translatesAutoresizingMaskIntoConstraints = false
-        routePreviewContainer.addSubview(routeInfoStack)
+        // Cancel button
+        cancelRouteButton.setTitle("Cancel", for: .normal)
+        cancelRouteButton.backgroundColor = .systemGray5
+        cancelRouteButton.setTitleColor(.label, for: .normal)
+        cancelRouteButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        cancelRouteButton.layer.cornerRadius = 12
+        cancelRouteButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelRouteButton.addTarget(self, action: #selector(cancelRoutePreview), for: .touchUpInside)
+        routePreviewContainer.addSubview(cancelRouteButton)
 
         // Start navigation button
-        startNavigationButton.setTitle("🚛 Start Truck Navigation", for: .normal)
+        startNavigationButton.setTitle("🚛 Start Navigation", for: .normal)
         startNavigationButton.backgroundColor = .systemBlue
         startNavigationButton.setTitleColor(.white, for: .normal)
         startNavigationButton.titleLabel?.font = .boldSystemFont(ofSize: 18)
@@ -460,16 +391,17 @@ class MapViewController: UIViewController {
             routePreviewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             routePreviewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             routePreviewContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-            routePreviewContainer.heightAnchor.constraint(equalToConstant: 180),
+            routePreviewContainer.heightAnchor.constraint(equalToConstant: 80),
 
-            routeInfoStack.topAnchor.constraint(equalTo: routePreviewContainer.topAnchor, constant: 20),
-            routeInfoStack.leadingAnchor.constraint(equalTo: routePreviewContainer.leadingAnchor, constant: 20),
-            routeInfoStack.trailingAnchor.constraint(equalTo: routePreviewContainer.trailingAnchor, constant: -20),
+            cancelRouteButton.topAnchor.constraint(equalTo: routePreviewContainer.topAnchor, constant: 16),
+            cancelRouteButton.leadingAnchor.constraint(equalTo: routePreviewContainer.leadingAnchor, constant: 16),
+            cancelRouteButton.widthAnchor.constraint(equalTo: routePreviewContainer.widthAnchor, multiplier: 0.3),
+            cancelRouteButton.heightAnchor.constraint(equalToConstant: 50),
 
-            startNavigationButton.topAnchor.constraint(equalTo: routeInfoStack.bottomAnchor, constant: 16),
-            startNavigationButton.leadingAnchor.constraint(equalTo: routePreviewContainer.leadingAnchor, constant: 20),
-            startNavigationButton.trailingAnchor.constraint(equalTo: routePreviewContainer.trailingAnchor, constant: -20),
-            startNavigationButton.heightAnchor.constraint(equalToConstant: 56)
+            startNavigationButton.topAnchor.constraint(equalTo: routePreviewContainer.topAnchor, constant: 16),
+            startNavigationButton.trailingAnchor.constraint(equalTo: routePreviewContainer.trailingAnchor, constant: -16),
+            startNavigationButton.leadingAnchor.constraint(equalTo: cancelRouteButton.trailingAnchor, constant: 12),
+            startNavigationButton.heightAnchor.constraint(equalToConstant: 50)
         ])
     }
 
@@ -477,65 +409,37 @@ class MapViewController: UIViewController {
         // Store routes
         currentNavigationRoutes = navigationRoutes
 
-        // Clear previous route info
-        routeInfoStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        // Use Mapbox NavigationMapView's showcase() method to display route
+        navigationMapView.showcase(navigationRoutes, animated: true)
 
-        // Get primary route
-        let primaryRoute = navigationRoutes.mainRoute.route
-        guard primaryRoute.legs.count > 0 else {
-            print("⚠️ No primary route found")
-            return
-        }
-
-        // Create route info labels
-        let titleLabel = UILabel()
-        titleLabel.text = "🚛 Truck-Safe Route"
-        titleLabel.font = .boldSystemFont(ofSize: 20)
-        titleLabel.textColor = .label
-
-        let distanceLabel = UILabel()
-        let distanceMiles = primaryRoute.distance * 0.000621371
-        distanceLabel.text = String(format: "📏 Distance: %.1f mi", distanceMiles)
-        distanceLabel.font = .systemFont(ofSize: 16)
-        distanceLabel.textColor = .secondaryLabel
-
-        let durationLabel = UILabel()
-        let durationMinutes = Int(primaryRoute.expectedTravelTime / 60)
-        let hours = durationMinutes / 60
-        let minutes = durationMinutes % 60
-        if hours > 0 {
-            durationLabel.text = String(format: "⏱️ Time: %dh %dm", hours, minutes)
-        } else {
-            durationLabel.text = String(format: "⏱️ Time: %dm", minutes)
-        }
-        durationLabel.font = .systemFont(ofSize: 16)
-        durationLabel.textColor = .secondaryLabel
-
-        // Check for alternative routes
-        let alternativesLabel = UILabel()
-        if navigationRoutes.alternativeRoutes.count > 0 {
-            alternativesLabel.text = "📍 +\(navigationRoutes.alternativeRoutes.count) alternative route(s) available"
-            alternativesLabel.font = .systemFont(ofSize: 14, weight: .medium)
-            alternativesLabel.textColor = .systemBlue
-        }
-
-        routeInfoStack.addArrangedSubview(titleLabel)
-        routeInfoStack.addArrangedSubview(distanceLabel)
-        routeInfoStack.addArrangedSubview(durationLabel)
-        if navigationRoutes.alternativeRoutes.count > 0 {
-            routeInfoStack.addArrangedSubview(alternativesLabel)
-        }
-
-        // Show preview UI and hide other UI
+        // Show simple start navigation button
         routePreviewContainer.isHidden = false
-        searchContainer.isHidden = true
         recenterButton.isHidden = true
-        speedLimitView.isHidden = true
-        roadNameLabel.isHidden = true
 
         view.bringSubviewToFront(routePreviewContainer)
 
-        print("📍 Route preview displayed with \(navigationRoutes.alternativeRoutes.count) alternatives")
+        let primaryRoute = navigationRoutes.mainRoute.route
+        let distanceMiles = primaryRoute.distance * 0.000621371
+        let durationMinutes = Int(primaryRoute.expectedTravelTime / 60)
+        print("✅ Mapbox showcase(): Route displayed - \(String(format: "%.1f mi", distanceMiles)), \(durationMinutes) min")
+        print("📍 +\(navigationRoutes.alternativeRoutes.count) alternative route(s) available")
+    }
+
+    @objc private func cancelRoutePreview() {
+        // Hide route preview
+        routePreviewContainer.isHidden = true
+
+        // Clear current routes
+        currentNavigationRoutes = nil
+
+        // Show search panel again
+        panelController.view.isHidden = false
+        recenterButton.isHidden = false
+
+        // Restore search annotations if they were cleared
+        // (User might want to see them again)
+
+        print("❌ Route preview canceled")
     }
 
     @objc private func confirmStartNavigation() {
@@ -550,49 +454,6 @@ class MapViewController: UIViewController {
         // Start navigation with selected routes
         startNavigation(with: routes)
     }
-
-    private func performSearch(query: String) {
-        // Cancel previous search
-        currentGeocodeTask?.cancel()
-
-        guard !query.isEmpty else {
-            searchResults = []
-            searchResultsTable.isHidden = true
-            return
-        }
-
-        let options = ForwardGeocodeOptions(query: query)
-        options.focalLocation = locationManager.location
-        options.maximumResultCount = 5
-
-        currentGeocodeTask = geocoder.geocode(options) { [weak self] (placemarks, attribution, error) in
-            guard let self = self else { return }
-
-            if let error = error {
-                // Don't log cancelled tasks as errors
-                if (error as NSError).code != NSURLErrorCancelled {
-                    print("❌ Geocoding error: \(error)")
-                }
-                return
-            }
-
-            guard let placemarks = placemarks, !placemarks.isEmpty else {
-                print("⚠️ No results found")
-                DispatchQueue.main.async {
-                    self.searchResults = []
-                    self.searchResultsTable.reloadData()
-                }
-                return
-            }
-
-            DispatchQueue.main.async {
-                self.searchResults = placemarks
-                self.searchResultsTable.reloadData()
-                self.searchResultsTable.isHidden = false
-            }
-        }
-    }
-
 
     private func calculateRoute(to destination: CLLocationCoordinate2D) {
         guard let userLocation = locationManager.location?.coordinate else {
@@ -633,11 +494,23 @@ class MapViewController: UIViewController {
     }
 
     private func startNavigation(with navigationRoutes: NavigationRoutes) {
+        // Set isNavigating first to prevent locationMatching from updating UI
         isNavigating = true
+
+        // Clear search annotations before starting navigation
+        clearSearchAnnotations()
+
+        // Pause free-drive session before starting turn-by-turn navigation
+        if isFreeDriveActive {
+            navigationProvider.tripSession().pauseFreeDrive()
+            isFreeDriveActive = false
+            print("⏸️ Free-drive mode paused for turn-by-turn navigation")
+        }
 
         // Hide free-drive UI during active navigation
         speedLimitView.isHidden = true
         roadNameLabel.isHidden = true
+        panelController.view.isHidden = true
 
         // Configure navigation options using the navigation provider
         let navigationOptions = NavigationOptions(
@@ -667,42 +540,132 @@ class MapViewController: UIViewController {
     // are all handled automatically by Mapbox NavigationViewController
 }
 
-extension MapViewController: UITextFieldDelegate {
-    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        textField.resignFirstResponder()
-        return true
+// MARK: - SearchControllerDelegate
+
+extension MapViewController: SearchControllerDelegate {
+    func searchResultSelected(_ searchResult: SearchResult) {
+        // User selected a search result from MapboxSearchUI
+        let coordinate = searchResult.coordinate
+
+        print("📍 Selected destination: \(searchResult.name)")
+
+        // Dismiss search controller
+        searchController.dismiss(animated: true)
+
+        // Clear any category search annotations
+        clearSearchAnnotations()
+
+        // Calculate route to selected destination
+        calculateRoute(to: coordinate)
     }
 
-    func textFieldDidBeginEditing(_ textField: UITextField) {
-        // Show search results table when user starts typing
-    }
-}
+    func categorySearchResultsReceived(category: SearchCategory, results: [SearchResult]) {
+        print("📂 Category search: \(category.name) - \(results.count) results nearby")
 
-extension MapViewController: UITableViewDelegate, UITableViewDataSource {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return searchResults.count
-    }
+        if results.isEmpty {
+            print("⚠️ No \(category.name) found nearby")
+            return
+        }
 
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
-        let placemark = searchResults[indexPath.row]
+        // Store search results
+        currentSearchResults = results
 
-        cell.textLabel?.text = placemark.formattedName
-        cell.textLabel?.numberOfLines = 2
-        cell.textLabel?.font = .systemFont(ofSize: 14)
+        // Display results as map annotations
+        displaySearchResultsAsAnnotations(results: results, category: category.name)
 
-        return cell
+        print("✅ Displaying \(results.count) \(category.name) locations on map")
     }
 
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        let placemark = searchResults[indexPath.row]
+    private func displaySearchResultsAsAnnotations(results: [SearchResult], category: String) {
+        // Clear previous annotations
+        clearSearchAnnotations()
 
-        guard let coordinate = placemark.location?.coordinate else { return }
+        // Create annotations for each search result
+        var annotations: [PointAnnotation] = []
 
-        searchTextField.text = placemark.formattedName
-        searchTextField.resignFirstResponder()
-        searchResultsTable.isHidden = true
+        for result in results {
+            var annotation = PointAnnotation(coordinate: result.coordinate)
+            annotation.textField = result.name
+            annotation.textColor = StyleColor(.label)
+            annotation.textHaloColor = StyleColor(.systemBackground)
+            annotation.textHaloWidth = 2
+            annotation.textOffset = [0, -1.5]
+            annotation.textSize = 12
 
+            // Use SF Symbol for pin
+            annotation.iconImage = "mappin.circle.fill"
+            annotation.iconSize = 1.5
+
+            annotations.append(annotation)
+        }
+
+        // Add annotations to map
+        pointAnnotationManager.annotations = annotations
+
+        // Fit camera to show all annotations
+        fitCameraToAnnotations(coordinates: results.map { $0.coordinate })
+
+        print("📍 Added \(annotations.count) \(category) pins to map")
+    }
+
+    private func fitCameraToAnnotations(coordinates: [CLLocationCoordinate2D]) {
+        guard !coordinates.isEmpty else { return }
+
+        // If single coordinate, just center on it
+        if coordinates.count == 1 {
+            let cameraOptions = CameraOptions(
+                center: coordinates[0],
+                zoom: 15,
+                pitch: 0
+            )
+            navigationMapView.mapView.camera.ease(to: cameraOptions, duration: 1.0)
+            return
+        }
+
+        // Calculate bounding box for multiple coordinates
+        let latitudes = coordinates.map { $0.latitude }
+        let longitudes = coordinates.map { $0.longitude }
+
+        guard let minLat = latitudes.min(),
+              let maxLat = latitudes.max(),
+              let minLon = longitudes.min(),
+              let maxLon = longitudes.max() else { return }
+
+        // Calculate center
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
+        let center = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
+
+        // Calculate appropriate zoom level based on span
+        let latSpan = maxLat - minLat
+        let lonSpan = maxLon - minLon
+        let maxSpan = max(latSpan, lonSpan)
+
+        // Simple zoom calculation (adjust as needed)
+        let zoom = max(10.0, 15.0 - log2(maxSpan * 100))
+
+        let cameraOptions = CameraOptions(
+            center: center,
+            padding: UIEdgeInsets(top: 100, left: 50, bottom: 200, right: 50),
+            zoom: zoom,
+            pitch: 0
+        )
+
+        navigationMapView.mapView.camera.ease(to: cameraOptions, duration: 1.0)
+    }
+
+    private func clearSearchAnnotations() {
+        pointAnnotationManager.annotations = []
+        currentSearchResults = []
+        print("🗑️ Cleared search annotations")
+    }
+
+    func userFavoriteSelected(_ userFavorite: FavoriteRecord) {
+        // Handle favorite selection if needed
+        let coordinate = userFavorite.coordinate
+        print("⭐ Selected favorite: \(userFavorite.name)")
+
+        searchController.dismiss(animated: true)
         calculateRoute(to: coordinate)
     }
 }
@@ -716,14 +679,20 @@ extension MapViewController: NavigationViewControllerDelegate {
         currentNavigationViewController = nil
         currentNavigationRoutes = nil
 
+        print(canceled ? "🛑 Navigation canceled - returning to free-drive" : "🎯 Navigation completed - returning to free-drive")
+
         // Restart free-drive mode after navigation ends
         startFreeDriveMode()
 
-        // Show free-drive UI elements
-        speedLimitView.isHidden = false
-        roadNameLabel.isHidden = false
+        // Show search panel again
+        panelController.view.isHidden = false
+        recenterButton.isHidden = false
 
-        print(canceled ? "🛑 Navigation canceled - returning to free-drive" : "🎯 Navigation completed - returning to free-drive")
+        // Hide route preview if visible
+        routePreviewContainer.isHidden = true
+
+        // Note: speedLimitView and roadNameLabel visibility is managed by locationMatching subscription
+        // They will automatically show when data is available
     }
 
     func navigationViewController(_ navigationViewController: NavigationViewController, didArriveAt waypoint: Waypoint) -> Bool {
@@ -749,9 +718,39 @@ extension MapViewController: CLLocationManagerDelegate {
         }
     }
 
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+
+        // Update search proximity with new location
+        configureSearchProximity()
+    }
+
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         if newHeading.headingAccuracy >= 0 {
             lastBearing = newHeading.trueHeading
+        }
+    }
+}
+
+// MARK: - AnnotationInteractionDelegate
+
+extension MapViewController: AnnotationInteractionDelegate {
+    func annotationManager(_ manager: AnnotationManager, didDetectTappedAnnotations annotations: [Annotation]) {
+        guard let annotation = annotations.first as? PointAnnotation else { return }
+
+        // Find the search result for this annotation
+        if let index = currentSearchResults.firstIndex(where: { result in
+            result.coordinate.latitude == annotation.point.coordinates.latitude &&
+            result.coordinate.longitude == annotation.point.coordinates.longitude
+        }) {
+            let searchResult = currentSearchResults[index]
+            print("📍 Tapped annotation: \(searchResult.name)")
+
+            // Calculate route to selected location
+            calculateRoute(to: searchResult.coordinate)
+
+            // Clear annotations after selection
+            clearSearchAnnotations()
         }
     }
 }

@@ -14,11 +14,14 @@ struct ContentView: View {
 
 struct NavigationViewControllerRepresentable: UIViewControllerRepresentable {
 
-    func makeUIViewController(context: Context) -> MapViewController {
-        return MapViewController()
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let mapViewController = MapViewController()
+        let navController = UINavigationController(rootViewController: mapViewController)
+        navController.setNavigationBarHidden(true, animated: false)
+        return navController
     }
 
-    func updateUIViewController(_ uiViewController: MapViewController, context: Context) {
+    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {
     }
 }
 
