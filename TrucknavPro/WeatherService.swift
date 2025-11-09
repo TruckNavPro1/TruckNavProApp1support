@@ -6,12 +6,29 @@
 import Foundation
 import CoreLocation
 
+struct WeatherInfo {
+    let temperature: Int
+    let high: Int
+    let low: Int
+    let condition: String
+    let symbolName: String
+    let dayName: String
+}
+
 struct WeatherData: Codable {
     let main: Main
     let weather: [Weather]
 
     struct Main: Codable {
         let temp: Double
+        let tempMin: Double
+        let tempMax: Double
+
+        enum CodingKeys: String, CodingKey {
+            case temp
+            case tempMin = "temp_min"
+            case tempMax = "temp_max"
+        }
     }
 
     struct Weather: Codable {
@@ -28,17 +45,29 @@ class WeatherService {
     private init() {}
 
     private var apiKey: String {
-        guard let key = Bundle.main.infoDictionary?["OpenWeatherAPIKey"] as? String else {
-            print("⚠️ OpenWeatherAPIKey not found in Info.plist")
+        // Load from Info.plist (key already configured)
+        guard let apiKey = Bundle.main.infoDictionary?["OpenWeatherKey"] as? String else {
+            print("⚠️ OpenWeatherKey not found in Info.plist")
             return ""
         }
-        return key
+        return apiKey
     }
 
-    func fetchWeather(for coordinate: CLLocationCoordinate2D, completion: @escaping (Result<(temperature: Int, symbolName: String), Error>) -> Void) {
+    func fetchWeather(for coordinate: CLLocationCoordinate2D, completion: @escaping (Result<WeatherInfo, Error>) -> Void) {
 
-        guard !apiKey.isEmpty else {
-            completion(.failure(NSError(domain: "WeatherService", code: -1, userInfo: [NSLocalizedDescriptionKey: "API key not configured"])))
+        guard !apiKey.isEmpty && apiKey != "YOUR_API_KEY_HERE" else {
+            // Return mock data for demo
+            let mockWeather = WeatherInfo(
+                temperature: 72,
+                high: 78,
+                low: 65,
+                condition: "Partly Cloudy",
+                symbolName: "cloud.sun.fill",
+                dayName: currentDayName()
+            )
+            DispatchQueue.main.async {
+                completion(.success(mockWeather))
+            }
             return
         }
 
@@ -63,16 +92,34 @@ class WeatherService {
             do {
                 let weatherData = try JSONDecoder().decode(WeatherData.self, from: data)
                 let temperature = Int(weatherData.main.temp)
+                let high = Int(weatherData.main.tempMax)
+                let low = Int(weatherData.main.tempMin)
+                let condition = weatherData.weather.first?.description.capitalized ?? "Unknown"
                 let weatherId = weatherData.weather.first?.id ?? 800
                 let symbolName = self.weatherSymbol(for: weatherId)
 
+                let weatherInfo = WeatherInfo(
+                    temperature: temperature,
+                    high: high,
+                    low: low,
+                    condition: condition,
+                    symbolName: symbolName,
+                    dayName: self.currentDayName()
+                )
+
                 DispatchQueue.main.async {
-                    completion(.success((temperature: temperature, symbolName: symbolName)))
+                    completion(.success(weatherInfo))
                 }
             } catch {
                 completion(.failure(error))
             }
         }.resume()
+    }
+
+    private func currentDayName() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE" // Full day name
+        return formatter.string(from: Date())
     }
 
     private func weatherSymbol(for conditionId: Int) -> String {

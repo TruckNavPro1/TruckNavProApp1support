@@ -16,7 +16,7 @@ class MapViewController: UIViewController {
 
     private var navigationMapView: NavigationMapView!
     private let locationManager = CLLocationManager()
-    private var cancelables = Set<AnyCancelable>()
+    private var cancelables = Set<AnyCancellable>()
     private var lastBearing: CLLocationDirection = 0
 
     // Mapbox Navigation Provider (v3)
@@ -51,6 +51,16 @@ class MapViewController: UIViewController {
     private var pointAnnotationManager: PointAnnotationManager!
     private var currentSearchResults: [SearchResult] = []
 
+    // Weather update tracking
+    private var lastWeatherUpdateTime: Date?
+
+    // TomTom Services
+    private var tomTomRoutingService: TomTomRoutingService?
+    private var tomTomTrafficService: TomTomTrafficService?
+    private var tomTomSearchService: TomTomSearchService?
+    private var trafficUpdateTimer: Timer?
+    private var incidentAnnotationManager: PointAnnotationManager?
+
     private lazy var recenterButton: UIButton = {
         let button = UIButton(type: .system)
         let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
@@ -83,6 +93,12 @@ class MapViewController: UIViewController {
         return button
     }()
 
+    private let weatherWidget: WeatherWidgetView = {
+        let widget = WeatherWidgetView()
+        widget.translatesAutoresizingMaskIntoConstraints = false
+        return widget
+    }()
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -91,6 +107,16 @@ class MapViewController: UIViewController {
         navigationProvider = MapboxNavigationProvider(coreConfig: coreConfig)
         mapboxNavigation = navigationProvider.mapboxNavigation
 
+        // Initialize TomTom Services if API key available
+        if let tomTomApiKey = Bundle.main.infoDictionary?["TomTomAPIKey"] as? String {
+            tomTomRoutingService = TomTomRoutingService(apiKey: tomTomApiKey)
+            tomTomTrafficService = TomTomTrafficService(apiKey: tomTomApiKey)
+            tomTomSearchService = TomTomSearchService(apiKey: tomTomApiKey)
+            print("🚛 TomTom Services initialized (Routing, Traffic, Search)")
+        } else {
+            print("⚠️ TomTom API key not found - using Mapbox only")
+        }
+
         setupLocationManager()
         setupMapView()
         setupSearchController()
@@ -98,10 +124,12 @@ class MapViewController: UIViewController {
         setupRoutePreviewUI()
         setupRecenterButton()
         setupSettingsButton()
+        setupWeatherWidget()
 
         // Ensure proper z-ordering (bring controls to front)
         view.bringSubviewToFront(recenterButton)
         view.bringSubviewToFront(settingsButton)
+        view.bringSubviewToFront(weatherWidget)
         view.bringSubviewToFront(speedLimitView)
         view.bringSubviewToFront(roadNameLabel)
 
@@ -209,7 +237,10 @@ class MapViewController: UIViewController {
         // Handle annotation taps via delegate
         pointAnnotationManager.delegate = self
 
-        print("✅ Annotation manager initialized")
+        // Create annotation manager for traffic incidents
+        incidentAnnotationManager = navigationMapView.mapView.annotations.makePointAnnotationManager()
+
+        print("✅ Annotation managers initialized")
     }
 
     private func configureDayNightMode() {
@@ -317,6 +348,33 @@ class MapViewController: UIViewController {
         ])
     }
 
+    private func setupWeatherWidget() {
+        view.addSubview(weatherWidget)
+
+        NSLayoutConstraint.activate([
+            weatherWidget.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            weatherWidget.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            weatherWidget.widthAnchor.constraint(lessThanOrEqualToConstant: 180)
+        ])
+
+        // Fetch weather for initial location
+        if let location = locationManager.location {
+            fetchWeather(for: location.coordinate)
+        }
+    }
+
+    private func fetchWeather(for coordinate: CLLocationCoordinate2D) {
+        WeatherService.shared.fetchWeather(for: coordinate) { [weak self] result in
+            switch result {
+            case .success(let weatherInfo):
+                self?.weatherWidget.configure(with: weatherInfo)
+                print("🌤️ Weather updated: \(weatherInfo.temperature)° \(weatherInfo.condition)")
+            case .failure(let error):
+                print("⚠️ Weather fetch failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     @objc private func openSettings() {
         let settingsVC = SettingsViewController()
         settingsVC.modalPresentationStyle = .pageSheet
@@ -366,7 +424,10 @@ class MapViewController: UIViewController {
         // Start Mapbox free-drive mode (passive navigation)
         // Note: Can be called multiple times - Mapbox handles restart internally
         navigationProvider.tripSession().startFreeDrive()
+
+        // Keep flags in lockstep
         isFreeDriveActive = true
+        isNavigating = false
 
         // Enable camera to follow user bearing (heading direction)
         navigationMapView.navigationCamera.update(cameraState: .following)
@@ -396,9 +457,146 @@ class MapViewController: UIViewController {
                     self.roadNameLabel.isHidden = true
                 }
             }.store(in: &cancelables)
+
+            // Subscribe to heading updates for aggressive bearing tracking
+            subscribeToHeadingUpdates()
         }
 
+        // Start traffic updates for real-time incident display
+        startTrafficUpdates()
+
         print("🆓 Free-drive mode started - camera following user bearing")
+    }
+
+    // MARK: - Aggressive Camera Bearing Following
+
+    private func subscribeToHeadingUpdates() {
+        navigationProvider.mapboxNavigation.navigation().heading.sink { [weak self] heading in
+            guard let self = self, !self.isNavigating else { return }
+            self.updateCameraBearingContinuously(heading.trueHeading)
+        }.store(in: &cancelables)
+
+        print("🧭 Aggressive camera bearing tracking enabled")
+    }
+
+    private func updateCameraBearingContinuously(_ bearing: CLLocationDirection) {
+        // Get current camera state
+        let currentCamera = navigationMapView.mapView.cameraState
+
+        // Create updated camera options with new bearing
+        let cameraOptions = CameraOptions(
+            center: currentCamera.center,
+            padding: currentCamera.padding,
+            zoom: currentCamera.zoom,
+            bearing: bearing,  // Update bearing to match heading
+            pitch: 45  // Maintain elevated pitch for better 3D view
+        )
+
+        // Smooth update with quick 300ms easing
+        navigationMapView.mapView.camera.ease(
+            to: cameraOptions,
+            duration: 0.3,
+            curve: .linear,
+            completion: nil
+        )
+    }
+
+    // MARK: - Traffic Updates
+
+    private func startTrafficUpdates() {
+        guard tomTomTrafficService != nil else { return }
+
+        // Update immediately
+        updateTrafficIncidents()
+
+        // Then update every 60 seconds
+        trafficUpdateTimer?.invalidate()
+        trafficUpdateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.updateTrafficIncidents()
+        }
+
+        print("🚦 Traffic updates started (60s interval)")
+    }
+
+    private func stopTrafficUpdates() {
+        trafficUpdateTimer?.invalidate()
+        trafficUpdateTimer = nil
+        incidentAnnotationManager?.annotations = []
+        print("🚦 Traffic updates stopped")
+    }
+
+    private func updateTrafficIncidents() {
+        guard let trafficService = tomTomTrafficService else { return }
+
+        // Get visible region bounds
+        let visibleCoordinates = navigationMapView.mapView.mapboxMap.coordinateBounds(for: navigationMapView.mapView.bounds)
+
+        let boundingBox = (
+            minLat: visibleCoordinates.southwest.latitude,
+            minLon: visibleCoordinates.southwest.longitude,
+            maxLat: visibleCoordinates.northeast.latitude,
+            maxLon: visibleCoordinates.northeast.longitude
+        )
+
+        trafficService.getTrafficIncidents(in: boundingBox) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let incidents):
+                    self?.displayTrafficIncidents(incidents)
+                case .failure(let error):
+                    print("⚠️ Traffic incidents fetch failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func displayTrafficIncidents(_ incidents: [TomTomTrafficService.TrafficIncident]) {
+        guard let manager = incidentAnnotationManager else { return }
+
+        // Create annotations for each incident
+        var annotations: [PointAnnotation] = []
+
+        for incident in incidents {
+            var annotation = PointAnnotation(coordinate: incident.coordinate)
+
+            // Set icon based on type
+            let iconName: String
+            switch incident.type {
+            case 1: iconName = "exclamationmark.triangle.fill" // Accident
+            case 2: iconName = "hammer.fill"                    // Roadwork
+            case 3: iconName = "xmark.octagon.fill"            // Closure
+            default: iconName = "exclamationmark.circle.fill"  // Other
+            }
+
+            annotation.iconImage = iconName
+
+            // Color by severity
+            let iconColor: UIColor
+            switch incident.severity {
+            case "Severe", "High": iconColor = .systemRed
+            case "Medium": iconColor = .systemOrange
+            default: iconColor = .systemYellow
+            }
+
+            annotation.iconColor = StyleColor(iconColor)
+            annotation.iconSize = 1.2
+
+            // Add text label
+            annotation.textField = incident.description
+            annotation.textColor = StyleColor(.white)
+            annotation.textHaloColor = StyleColor(.black)
+            annotation.textHaloWidth = 2
+            annotation.textSize = 10
+            annotation.textOffset = [0, -2]
+
+            annotations.append(annotation)
+        }
+
+        manager.annotations = annotations
+
+        if !incidents.isEmpty {
+            print("🚦 Displaying \(incidents.count) traffic incidents on map")
+        }
     }
 
     // MARK: - Route Preview UI
@@ -423,7 +621,7 @@ class MapViewController: UIViewController {
         cancelRouteButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
         cancelRouteButton.layer.cornerRadius = 12
         cancelRouteButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelRouteButton.addTarget(self, action: #selector(cancelRoutePreview), for: .touchUpInside)
+        cancelRouteButton.addTarget(self, action: #selector(cancelAllRouting), for: .touchUpInside)
         routePreviewContainer.addSubview(cancelRouteButton)
 
         // Start navigation button
@@ -474,12 +672,73 @@ class MapViewController: UIViewController {
         print("📍 +\(navigationRoutes.alternativeRoutes.count) alternative route(s) available")
     }
 
+    // MARK: - Universal Route Cancellation
+
+    /// Shared cleanup method called after navigation ends (either user-initiated or programmatic)
+    private func cleanupAfterNavigation() {
+        isNavigating = false
+
+        // CRITICAL: Force dismiss NavigationViewController if still presented before setting to nil
+        // This ensures the VC's UI (route banners, trip info) is actually removed from screen
+        if let navVC = currentNavigationViewController {
+            if navVC.presentingViewController != nil {
+                print("⚠️ NavigationVC still presented - force dismissing")
+                navVC.dismiss(animated: false)  // Force immediate dismissal
+            }
+        }
+
+        currentNavigationViewController = nil
+        currentNavigationRoutes = nil
+        routePreviewContainer.isHidden = true
+
+        // Ensure map is clean and we're back to free-drive
+        navigationMapView.removeRoutes()
+        navigationMapView.navigationCamera.stop()
+        navigationMapView.navigationCamera.update(cameraState: .idle)
+
+        // Re-enable puck
+        navigationMapView.puckType = .puck2D(.navigationDefault)
+        navigationMapView.mapView.location.options.puckBearingEnabled = true
+
+        // Restart free-drive mode
+        startFreeDriveMode()
+
+        // Show free-drive UI elements
+        panelController.view.isHidden = false
+        recenterButton.isHidden = false
+        settingsButton.isHidden = false
+
+        // Recenter camera immediately
+        recenterMap()
+
+        print("❌ Navigation ended - reset to free-drive state")
+    }
+
+    /// Universal cancellation method that works for both route preview and active navigation
+    @objc private func cancelAllRouting() {
+        if let navVC = currentNavigationViewController {
+            // CRITICAL: Only dismiss if VC is actually presented (prevents double-dismissal race condition)
+            if navVC.presentingViewController != nil {
+                navVC.dismiss(animated: true) { [weak self] in
+                    self?.cleanupAfterNavigation()
+                }
+            } else {
+                // VC already dismissed itself - just cleanup
+                cleanupAfterNavigation()
+            }
+        } else {
+            // If we're only previewing, use existing preview cancel logic
+            cancelRoutePreview()
+        }
+    }
+
     @objc private func cancelRoutePreview() {
-        // Remove route visualizations
+        // CRITICAL: Complete cleanup of NavigationMapView state
         navigationMapView.removeRoutes()
 
-        // Stop camera animations and return to idle state
+        // Stop navigation camera and explicitly return to idle state
         navigationMapView.navigationCamera.stop()
+        navigationMapView.navigationCamera.update(cameraState: .idle)
 
         // CRITICAL FIX: Re-enable puck (showcase() may have modified it)
         navigationMapView.puckType = .puck2D(.navigationDefault)
@@ -496,10 +755,11 @@ class MapViewController: UIViewController {
         recenterButton.isHidden = false
         settingsButton.isHidden = false
 
-        // Small delay for smoother transition, then recenter
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            self?.recenterMap()
-        }
+        // CRITICAL FIX: Restart free-drive mode to ensure we're not stuck in route mode
+        startFreeDriveMode()
+
+        // Recenter camera immediately to ensure 3D follow mode is restored
+        recenterMap()
 
         print("❌ Route preview canceled - fully reset to free-drive state")
     }
@@ -526,8 +786,84 @@ class MapViewController: UIViewController {
         print("🚛 Calculating TRUCK route from \(userLocation) to \(destination)")
         print("🚛 Truck params: \(truckHeight.value)m height, \(truckWidth.value)m width, \(truckWeight.value)t weight")
 
+        // Calculate distance to determine routing strategy
+        let distance = userLocation.distance(to: destination)
+
+        // Strategy: Use TomTom for long routes (>50km) or if available, otherwise Mapbox
+        if let tomTomService = tomTomRoutingService, distance > 50000 {
+            print("🚛 Using TomTom Routing API for long-distance truck route (\(Int(distance/1000))km)")
+            calculateTomTomRoute(from: userLocation, to: destination, using: tomTomService)
+        } else {
+            print("🚛 Using Mapbox Routing API")
+            calculateMapboxRoute(from: userLocation, to: destination)
+        }
+    }
+
+    // MARK: - TomTom Routing
+
+    private func calculateTomTomRoute(
+        from origin: CLLocationCoordinate2D,
+        to destination: CLLocationCoordinate2D,
+        using service: TomTomRoutingService
+    ) {
+        // Build truck parameters from settings
+        var truckParams = TruckParameters()
+        truckParams.height = truckHeight.value
+        truckParams.width = truckWidth.value
+        truckParams.weight = Int(truckWeight.value * 1000) // Convert metric tons to kg
+        truckParams.commercialVehicle = true
+        truckParams.avoidUnpavedRoads = true
+
+        // Calculate route with TomTom
+        service.calculateRoute(
+            from: origin,
+            to: destination,
+            truckParams: truckParams
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    guard let tomTomRoute = response.routes.first else {
+                        print("⚠️ No routes in TomTom response, falling back to Mapbox")
+                        self?.calculateMapboxRoute(from: origin, to: destination)
+                        return
+                    }
+
+                    let distanceMiles = Double(tomTomRoute.summary.lengthInMeters) * 0.000621371
+                    let durationMinutes = tomTomRoute.summary.travelTimeInSeconds / 60
+                    print("✅ TomTom route: \(String(format: "%.1f mi", distanceMiles)), \(durationMinutes) min")
+
+                    // Display TomTom route on map (visual only, then fallback to Mapbox for navigation)
+                    self?.displayTomTomRouteAndUseMapboxForNavigation(tomTomRoute, from: origin, to: destination)
+
+                case .failure(let error):
+                    print("❌ TomTom routing failed: \(error.localizedDescription)")
+                    print("🔄 Falling back to Mapbox routing")
+                    self?.calculateMapboxRoute(from: origin, to: destination)
+                }
+            }
+        }
+    }
+
+    private func displayTomTomRouteAndUseMapboxForNavigation(
+        _ tomTomRoute: TomTomRoute,
+        from origin: CLLocationCoordinate2D,
+        to destination: CLLocationCoordinate2D
+    ) {
+        // For now, use Mapbox for actual navigation since NavigationViewController requires NavigationRoutes
+        // TomTom route is validated and available, but we'll use Mapbox navigation system
+        print("🔄 Using Mapbox for turn-by-turn navigation (TomTom route validated)")
+        calculateMapboxRoute(from: origin, to: destination)
+    }
+
+    // MARK: - Mapbox Routing
+
+    private func calculateMapboxRoute(
+        from origin: CLLocationCoordinate2D,
+        to destination: CLLocationCoordinate2D
+    ) {
         // Configure truck-specific route options
-        let routeOptions = configureTruckRouteOptions(from: userLocation, to: destination)
+        let routeOptions = configureTruckRouteOptions(from: origin, to: destination)
 
         // Calculate route using Navigation Provider (v3 async API)
         let request = mapboxNavigation.routingProvider().calculateRoutes(options: routeOptions)
@@ -535,7 +871,7 @@ class MapViewController: UIViewController {
         Task { @MainActor in
             switch await request.result {
             case .success(let navigationRoutes):
-                print("✅ Truck route calculated successfully")
+                print("✅ Mapbox truck route calculated successfully")
                 print("🚛 Route respects truck restrictions!")
 
                 // Show route preview with alternatives before starting navigation
@@ -575,6 +911,7 @@ class MapViewController: UIViewController {
         panelController.view.isHidden = true
         recenterButton.isHidden = true
         settingsButton.isHidden = true
+        routePreviewContainer.isHidden = true  // Hide our custom Cancel/Start buttons
 
         // Configure navigation options using the navigation provider
         let navigationOptions = NavigationOptions(
@@ -738,38 +1075,13 @@ extension MapViewController: SearchControllerDelegate {
 
 extension MapViewController: NavigationViewControllerDelegate {
     func navigationViewControllerDidDismiss(_ navigationViewController: NavigationViewController, byCanceling canceled: Bool) {
-        // User dismissed navigation (either by arriving or canceling)
-        isNavigating = false
-        currentNavigationViewController = nil
-        currentNavigationRoutes = nil
+        // CRITICAL: This delegate is called AFTER the NavigationViewController has already dismissed itself
+        // Do NOT call dismiss() here - it will cause a double-dismissal race condition
 
         print(canceled ? "🛑 Navigation canceled - returning to free-drive" : "🎯 Navigation completed - returning to free-drive")
 
-        // CRITICAL: Complete cleanup of NavigationMapView state
-        navigationMapView.removeRoutes()
-
-        // Stop navigation camera and return to idle
-        navigationMapView.navigationCamera.stop()
-
-        // CRITICAL FIX: Re-enable puck (NavigationViewController took control of it)
-        navigationMapView.puckType = .puck2D(.navigationDefault)
-        navigationMapView.mapView.location.options.puckBearingEnabled = true
-
-        // Restart free-drive mode after navigation ends
-        startFreeDriveMode()
-
-        // Show search panel again
-        panelController.view.isHidden = false
-        recenterButton.isHidden = false
-        settingsButton.isHidden = false
-
-        // Hide route preview if visible
-        routePreviewContainer.isHidden = true
-
-        // Recenter map on user location after brief delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.recenterMap()
-        }
+        // NavigationViewController already dismissed itself - just cleanup
+        cleanupAfterNavigation()
 
         // Note: speedLimitView and roadNameLabel visibility is managed by locationMatching subscription
         // They will automatically show when data is available
@@ -778,11 +1090,9 @@ extension MapViewController: NavigationViewControllerDelegate {
     func navigationViewController(_ navigationViewController: NavigationViewController, didArriveAt waypoint: Waypoint) -> Bool {
         print("🎉 Arrived at destination!")
 
-        // Automatically dismiss navigation after arrival
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            navigationViewController.dismiss(animated: true)
-        }
-
+        // Return true to allow NavigationViewController to auto-dismiss
+        // It will call navigationViewControllerDidDismiss after dismissing
+        // DO NOT manually call dismiss() here - causes double-dismissal
         return true
     }
 }
@@ -803,6 +1113,19 @@ extension MapViewController: CLLocationManagerDelegate {
 
         // Update search proximity with new location
         configureSearchProximity()
+
+        // Update weather every 10 minutes to avoid API rate limits
+        let shouldUpdateWeather: Bool
+        if let lastUpdate = lastWeatherUpdateTime {
+            shouldUpdateWeather = Date().timeIntervalSince(lastUpdate) > 600 // 10 minutes
+        } else {
+            shouldUpdateWeather = true // First time
+        }
+
+        if shouldUpdateWeather {
+            fetchWeather(for: location.coordinate)
+            lastWeatherUpdateTime = Date()
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {

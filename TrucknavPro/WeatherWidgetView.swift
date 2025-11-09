@@ -9,8 +9,12 @@ class WeatherWidgetView: UIView {
 
     private let containerView: UIView = {
         let view = UIView()
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-        view.layer.cornerRadius = 12
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.75)
+        view.layer.cornerRadius = 16
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.3
+        view.layer.shadowOffset = CGSize(width: 0, height: 2)
+        view.layer.shadowRadius = 8
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -25,8 +29,32 @@ class WeatherWidgetView: UIView {
 
     private let temperatureLabel: UILabel = {
         let label = UILabel()
-        label.font = .systemFont(ofSize: 18, weight: .semibold)
+        label.font = .systemFont(ofSize: 32, weight: .bold)
         label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private let dayLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .white.withAlphaComponent(0.9)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private let conditionLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 12, weight: .regular)
+        label.textColor = .white.withAlphaComponent(0.8)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private let highLowLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = .white.withAlphaComponent(0.9)
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -43,8 +71,16 @@ class WeatherWidgetView: UIView {
 
     private func setupView() {
         addSubview(containerView)
+
+        // Create stack for text info
+        let textStack = UIStackView(arrangedSubviews: [dayLabel, temperatureLabel, conditionLabel, highLowLabel])
+        textStack.axis = .vertical
+        textStack.spacing = 2
+        textStack.alignment = .leading
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
         containerView.addSubview(weatherIcon)
-        containerView.addSubview(temperatureLabel)
+        containerView.addSubview(textStack)
 
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: topAnchor),
@@ -52,23 +88,30 @@ class WeatherWidgetView: UIView {
             containerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            weatherIcon.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
-            weatherIcon.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            weatherIcon.widthAnchor.constraint(equalToConstant: 28),
-            weatherIcon.heightAnchor.constraint(equalToConstant: 28),
+            weatherIcon.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            weatherIcon.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
+            weatherIcon.widthAnchor.constraint(equalToConstant: 36),
+            weatherIcon.heightAnchor.constraint(equalToConstant: 36),
 
-            temperatureLabel.leadingAnchor.constraint(equalTo: weatherIcon.trailingAnchor, constant: 8),
-            temperatureLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
-            temperatureLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor)
+            textStack.leadingAnchor.constraint(equalTo: weatherIcon.trailingAnchor, constant: 12),
+            textStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            textStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
+            textStack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12)
         ])
 
         // Show default placeholder until weather data loads
         temperatureLabel.text = "--°"
         weatherIcon.image = UIImage(systemName: "cloud.sun.fill")
+        dayLabel.text = "Loading..."
+        conditionLabel.text = ""
+        highLowLabel.text = ""
     }
 
-    func configure(temperature: Int, symbolName: String) {
-        temperatureLabel.text = "\(temperature)°"
-        weatherIcon.image = UIImage(systemName: symbolName)
+    func configure(with weatherInfo: WeatherInfo) {
+        temperatureLabel.text = "\(weatherInfo.temperature)°"
+        weatherIcon.image = UIImage(systemName: weatherInfo.symbolName)
+        dayLabel.text = weatherInfo.dayName
+        conditionLabel.text = weatherInfo.condition
+        highLowLabel.text = "H:\(weatherInfo.high)° L:\(weatherInfo.low)°"
     }
 }
