@@ -11,15 +11,25 @@ import RevenueCat
 
 enum SubscriptionTier: String {
     case free = "free"
-    case pro = "pro_monthly"
-    case premium = "premium_yearly"
+    case proWeekly = "pro_weekly1"
+    case proMonthly = "pro_monthly1"
+    case premium = "pro_yearly1"
 
     var displayName: String {
         switch self {
         case .free: return "Free"
-        case .pro: return "Pro"
-        case .premium: return "Premium"
+        case .proWeekly: return "Pro Weekly"
+        case .proMonthly: return "Pro Monthly"
+        case .premium: return "Premium Yearly"
         }
+    }
+
+    var isPro: Bool {
+        return self == .proWeekly || self == .proMonthly || self == .premium
+    }
+
+    var isPremium: Bool {
+        return self == .premium
     }
 
     var features: [String] {
@@ -31,7 +41,7 @@ enum SubscriptionTier: String {
                 "Weather widget",
                 "Up to 5 saved routes"
             ]
-        case .pro:
+        case .proWeekly, .proMonthly:
             return [
                 "All Free features",
                 "Unlimited saved routes",
@@ -139,11 +149,16 @@ class RevenueCatService {
         // Update active entitlements
         activeEntitlements = Set(info.entitlements.active.keys)
 
-        // Determine current tier
-        if info.entitlements.active["premium"] != nil {
+        // Determine current tier (check premium first, then pro tiers)
+        if info.entitlements.active["premium"] != nil || info.entitlements.active["pro_yearly"] != nil {
             currentTier = .premium
+        } else if info.entitlements.active["pro_monthly"] != nil {
+            currentTier = .proMonthly
+        } else if info.entitlements.active["pro_weekly"] != nil {
+            currentTier = .proWeekly
         } else if info.entitlements.active["pro"] != nil {
-            currentTier = .pro
+            // Fallback for legacy "pro" entitlement
+            currentTier = .proMonthly
         } else {
             currentTier = .free
         }
@@ -164,10 +179,10 @@ class RevenueCatService {
             return true  // Available to all
 
         case .unlimitedRoutes, .offlineMaps, .advancedTruckSettings, .trafficAlerts:
-            return currentTier == .pro || currentTier == .premium
+            return currentTier.isPro  // All Pro and Premium tiers
 
         case .lifetimeHistory, .prioritySupport, .customProfiles, .fleetManagement:
-            return currentTier == .premium
+            return currentTier.isPremium  // Premium only
         }
     }
 
@@ -231,7 +246,7 @@ enum Feature {
         case .basicNavigation, .weather, .search:
             return .free
         case .unlimitedRoutes, .offlineMaps, .advancedTruckSettings, .trafficAlerts:
-            return .pro
+            return .proWeekly  // Any Pro tier will work
         case .lifetimeHistory, .prioritySupport, .customProfiles, .fleetManagement:
             return .premium
         }
