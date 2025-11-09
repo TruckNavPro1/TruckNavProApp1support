@@ -158,7 +158,7 @@ class MapViewController: UIViewController {
         // Create NavigationMapView for route preview and navigation (v3 syntax)
         navigationMapView = NavigationMapView(
             location: navigationProvider.mapboxNavigation.navigation().locationMatching
-                .map(\.mapMatchingResult.enhancedLocation)
+                .map(\.enhancedLocation)  // ✅ FIXED: Correct path (was .mapMatchingResult.enhancedLocation)
                 .eraseToAnyPublisher(),
             routeProgress: navigationProvider.mapboxNavigation.navigation().routeProgress
                 .map(\.?.routeProgress)
@@ -169,31 +169,20 @@ class MapViewController: UIViewController {
         navigationMapView.frame = view.bounds
         navigationMapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
-        // Use 3D puck (sphere) for user location
-        var puck3DConfig = Puck3DConfiguration(
-            model: Model(
-                uri: URL(string: "https://raw.githubusercontent.com/mapbox/mapbox-gl-native/master/platform/ios/app/Assets.xcassets/puck3d.glb")
-            ),
-            modelScale: .constant([10, 10, 10]),
-            modelRotation: .constant([0, 0, 0])
-        )
-        navigationMapView.puckType = .puck3D(puck3DConfig)
+        // Use 2D puck for maximum reliability (Mapbox recommended)
+        navigationMapView.puckType = .puck2D(.navigationDefault)
+
+        // Enable bearing tracking for directional indicator
+        navigationMapView.mapView.location.options.puckBearingEnabled = true
 
         view.addSubview(navigationMapView)
 
         navigationMapView.mapView.mapboxMap.onStyleLoaded.observeNext { [weak self] _ in
-            self?.configurePuck()
             self?.enable3DBuildings()
             self?.setupAnnotationManager()
             self?.configureDayNightMode()
             print("✅ NavigationMapView loaded - ready for free-drive")
         }.store(in: &cancelables)
-    }
-
-    private func configurePuck() {
-        // 3D puck is already configured in setupMapView()
-        // Just enable bearing tracking
-        navigationMapView.mapView.location.options.puckBearingEnabled = true
     }
 
     private func enable3DBuildings() {
@@ -477,11 +466,15 @@ class MapViewController: UIViewController {
     }
 
     @objc private func cancelRoutePreview() {
-        // Remove route visualization from map (CRITICAL!)
+        // Remove route visualizations
         navigationMapView.removeRoutes()
 
         // Stop camera animations and return to idle state
         navigationMapView.navigationCamera.stop()
+
+        // CRITICAL FIX: Re-enable puck (showcase() may have modified it)
+        navigationMapView.puckType = .puck2D(.navigationDefault)
+        navigationMapView.mapView.location.options.puckBearingEnabled = true
 
         // Clear stored route data
         currentNavigationRoutes = nil
@@ -494,10 +487,12 @@ class MapViewController: UIViewController {
         recenterButton.isHidden = false
         settingsButton.isHidden = false
 
-        // Recenter map smoothly on user location
-        recenterMap()
+        // Small delay for smoother transition, then recenter
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.recenterMap()
+        }
 
-        print("❌ Route preview canceled - routes removed from map, returned to free-drive")
+        print("❌ Route preview canceled - fully reset to free-drive state")
     }
 
     @objc private func confirmStartNavigation() {
@@ -741,6 +736,16 @@ extension MapViewController: NavigationViewControllerDelegate {
 
         print(canceled ? "🛑 Navigation canceled - returning to free-drive" : "🎯 Navigation completed - returning to free-drive")
 
+        // CRITICAL: Complete cleanup of NavigationMapView state
+        navigationMapView.removeRoutes()
+
+        // Stop navigation camera and return to idle
+        navigationMapView.navigationCamera.stop()
+
+        // CRITICAL FIX: Re-enable puck (NavigationViewController took control of it)
+        navigationMapView.puckType = .puck2D(.navigationDefault)
+        navigationMapView.mapView.location.options.puckBearingEnabled = true
+
         // Restart free-drive mode after navigation ends
         startFreeDriveMode()
 
@@ -751,6 +756,11 @@ extension MapViewController: NavigationViewControllerDelegate {
 
         // Hide route preview if visible
         routePreviewContainer.isHidden = true
+
+        // Recenter map on user location after brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.recenterMap()
+        }
 
         // Note: speedLimitView and roadNameLabel visibility is managed by locationMatching subscription
         // They will automatically show when data is available
