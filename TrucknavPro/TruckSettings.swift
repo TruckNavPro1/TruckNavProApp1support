@@ -13,6 +13,7 @@ struct TruckSettings {
 
     private static let heightKey = "truck_height"
     private static let widthKey = "truck_width"
+    private static let lengthKey = "truck_length"
     private static let weightKey = "truck_weight"
     private static let hazmatKey = "truck_hazmat"
     private static let avoidTollsKey = "avoid_tolls"
@@ -43,6 +44,17 @@ struct TruckSettings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: widthKey)
+        }
+    }
+
+    /// Truck length in meters (default: 16.15m = 53')
+    static var length: Double {
+        get {
+            let saved = UserDefaults.standard.double(forKey: lengthKey)
+            return saved != 0 ? saved : 16.15
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: lengthKey)
         }
     }
 
@@ -145,6 +157,7 @@ struct TruckSettings {
     static func resetToDefaults() {
         height = 4.11
         width = 2.44
+        length = 16.15
         weight = 36.287
         hazmat = false
         avoidTolls = false

@@ -11,6 +11,7 @@ import MapboxNavigationUIKit
 import MapboxSearchUI
 import CoreLocation
 import Combine
+import AudioToolbox
 
 class MapViewController: UIViewController {
 
@@ -65,6 +66,11 @@ class MapViewController: UIViewController {
     private var trafficUpdateTimer: Timer?
     private var incidentAnnotationManager: PointAnnotationManager?
 
+    // Hazard Warning System
+    private var hazardMonitoringService: HazardMonitoringService?
+    private var currentHazardWarningView: HazardWarningView?
+    private var lastHazardAlert: HazardAlert?
+
     lazy var recenterButton: UIButton = {
         let button = UIButton(type: .system)
         let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
@@ -116,7 +122,9 @@ class MapViewController: UIViewController {
             tomTomRoutingService = TomTomRoutingService(apiKey: tomTomApiKey)
             tomTomTrafficService = TomTomTrafficService(apiKey: tomTomApiKey)
             tomTomSearchService = TomTomSearchService(apiKey: tomTomApiKey)
-            print("🚛 TomTom Services initialized (Routing, Traffic, Search)")
+            hazardMonitoringService = HazardMonitoringService(tomTomApiKey: tomTomApiKey)
+            setupHazardWarningCallbacks()
+            print("🚛 TomTom Services initialized (Routing, Traffic, Search, Hazard Monitoring)")
         } else {
             print("⚠️ TomTom API key not found - using Mapbox only")
         }
@@ -946,6 +954,12 @@ class MapViewController: UIViewController {
         currentNavigationRoutes = nil
         routePreviewContainer.isHidden = true
 
+        // Stop hazard monitoring
+        hazardMonitoringService?.stopMonitoring()
+        currentHazardWarningView?.removeFromSuperview()
+        currentHazardWarningView = nil
+        lastHazardAlert = nil
+
         // Ensure map is clean and we're back to free-drive
         navigationMapView.removeRoutes()
         navigationMapView.navigationCamera.stop()
@@ -1205,6 +1219,12 @@ class MapViewController: UIViewController {
         }
 
         currentNavigationViewController = navigationViewController
+
+        // Start hazard monitoring with route coordinates
+        if let currentLocation = locationManager.location {
+            let routeCoordinates = navigationRoutes.mainRoute.route.shape?.coordinates ?? []
+            hazardMonitoringService?.startMonitoring(currentLocation: currentLocation, route: routeCoordinates)
+        }
     }
 
     // Note: Navigation UI, route drawing, voice guidance, speed limits, etc.
@@ -1460,6 +1480,12 @@ extension MapViewController: CLLocationManagerDelegate {
         // Update search proximity with new location (DISABLED - using custom search)
         // configureSearchProximity()
 
+        // Update hazard monitoring with new location (only during active navigation)
+        if isNavigating, let routes = currentNavigationRoutes {
+            let routeCoordinates = routes.mainRoute.route.shape?.coordinates ?? []
+            hazardMonitoringService?.updateLocation(location, route: routeCoordinates)
+        }
+
         // Update weather every 10 minutes to avoid API rate limits
         let shouldUpdateWeather: Bool
         if let lastUpdate = lastWeatherUpdateTime {
@@ -1538,6 +1564,73 @@ extension MapViewController: SettingsViewControllerDelegate {
         } catch {
             print("⚠️ Error updating map style: \(error)")
         }
+    }
+
+    // MARK: - Hazard Warning System
+
+    private func setupHazardWarningCallbacks() {
+        hazardMonitoringService?.onHazardDetected = { [weak self] alert in
+            DispatchQueue.main.async {
+                self?.displayHazardWarning(alert)
+            }
+        }
+    }
+
+    private func displayHazardWarning(_ alert: HazardAlert) {
+        // Don't show duplicate warnings
+        if let lastAlert = lastHazardAlert,
+           lastAlert.type.title == alert.type.title,
+           abs(lastAlert.distanceInMeters - alert.distanceInMeters) < 100 {
+            // Just update distance if same hazard
+            currentHazardWarningView?.updateDistance(alert.distanceInMeters)
+            return
+        }
+
+        lastHazardAlert = alert
+
+        // Remove existing warning if any
+        currentHazardWarningView?.removeFromSuperview()
+
+        // Create new warning view
+        let warningView = HazardWarningView()
+        warningView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(warningView)
+
+        NSLayoutConstraint.activate([
+            warningView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            warningView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            warningView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)
+        ])
+
+        // Configure warning with truck dimensions
+        warningView.configure(
+            with: alert,
+            truckHeight: TruckSettings.height,
+            truckWeight: TruckSettings.weight,
+            truckWidth: TruckSettings.width,
+            truckLength: TruckSettings.length
+        )
+
+        warningView.onDismiss = { [weak self] in
+            self?.currentHazardWarningView = nil
+            self?.lastHazardAlert = nil
+        }
+
+        currentHazardWarningView = warningView
+
+        // Play audio alert for critical hazards
+        if alert.type.isCritical {
+            playHazardAudioAlert()
+        }
+
+        print("🚨 Hazard warning displayed: \(alert.type.title) at \(alert.distanceDescription)")
+    }
+
+    private func playHazardAudioAlert() {
+        // Play gentle notification sound (not aggressive alarm)
+        AudioServicesPlaySystemSound(1310) // Soft notification chime
+
+        print("🔔 Hazard notification sound played")
     }
 }
 
