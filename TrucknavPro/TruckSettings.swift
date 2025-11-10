@@ -22,6 +22,9 @@ struct TruckSettings {
     private static let unitsKey = "units_imperial"
     private static let mapStyleKey = "map_style"
     private static let voiceVolumeKey = "voice_volume"
+    private static let enableHazardWarningsKey = "enable_hazard_warnings"
+    private static let enableHazardAudioKey = "enable_hazard_audio"
+    private static let warningDistanceKey = "warning_distance"
 
     // MARK: - Truck Specifications
 
@@ -151,6 +154,39 @@ struct TruckSettings {
         }
     }
 
+    // MARK: - Hazard Warning Settings
+
+    /// Enable hazard warnings (bridge clearances, weight limits, etc.)
+    static var enableHazardWarnings: Bool {
+        get {
+            UserDefaults.standard.object(forKey: enableHazardWarningsKey) as? Bool ?? true
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: enableHazardWarningsKey)
+        }
+    }
+
+    /// Enable audio alerts for hazard warnings
+    static var enableHazardAudio: Bool {
+        get {
+            UserDefaults.standard.object(forKey: enableHazardAudioKey) as? Bool ?? true
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: enableHazardAudioKey)
+        }
+    }
+
+    /// Warning distance in meters (default: 2400m / 1.5 miles)
+    static var warningDistance: Double {
+        get {
+            let saved = UserDefaults.standard.double(forKey: warningDistanceKey)
+            return saved != 0 ? saved : 2400 // 1.5 miles
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: warningDistanceKey)
+        }
+    }
+
     // MARK: - Helper Methods
 
     /// Reset all settings to defaults
@@ -166,6 +202,9 @@ struct TruckSettings {
         useImperialUnits = true
         mapStyle = .auto
         voiceVolume = 100
+        enableHazardWarnings = true
+        enableHazardAudio = true
+        warningDistance = 2400
     }
 
     /// Format height for display

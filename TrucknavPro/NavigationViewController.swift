@@ -1627,6 +1627,12 @@ extension MapViewController: SettingsViewControllerDelegate {
     }
 
     private func playHazardAudioAlert() {
+        // Check if audio alerts are enabled
+        guard TruckSettings.enableHazardAudio else {
+            print("🔇 Hazard audio alert disabled by user settings")
+            return
+        }
+
         // Play gentle notification sound (not aggressive alarm)
         AudioServicesPlaySystemSound(1310) // Soft notification chime
 

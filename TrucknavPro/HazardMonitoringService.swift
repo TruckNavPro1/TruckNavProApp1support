@@ -27,6 +27,12 @@ class HazardMonitoringService {
     // MARK: - Public Methods
 
     func startMonitoring(currentLocation: CLLocation, route: [CLLocationCoordinate2D]) {
+        // Check if hazard warnings are enabled
+        guard TruckSettings.enableHazardWarnings else {
+            print("🚨 Hazard monitoring disabled by user settings")
+            return
+        }
+
         print("🚨 Hazard monitoring started")
 
         // Query OSM for restrictions along the entire route
@@ -70,6 +76,11 @@ class HazardMonitoringService {
     // MARK: - Private Methods
 
     private func checkForHazards(at location: CLLocation, alongRoute route: [CLLocationCoordinate2D]) {
+        // Check if hazard warnings are enabled
+        guard TruckSettings.enableHazardWarnings else {
+            return
+        }
+
         // Get upcoming route segment (next 2km/1.2 miles)
         let upcomingSegment = getUpcomingRouteSegment(from: location.coordinate, route: route, lookAheadDistance: 2000)
 
@@ -132,8 +143,9 @@ class HazardMonitoringService {
 
             let distanceToRestriction = location.coordinate.distance(to: closestPoint)
 
-            // Only alert for restrictions within 1.5 miles / 2.4km ahead
-            guard distanceToRestriction < 2400 && distanceToRestriction > 50 else { continue }
+            // Only alert for restrictions within configured warning distance
+            let warningDistance = TruckSettings.warningDistance
+            guard distanceToRestriction < warningDistance && distanceToRestriction > 50 else { continue }
 
             // Check if this restriction applies to our truck
             var shouldAlert = false

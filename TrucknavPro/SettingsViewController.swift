@@ -20,6 +20,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
     private enum SettingsSection: Int, CaseIterable {
         case truck
         case navigation
+        case hazards
         case map
         case search
         case system
@@ -28,6 +29,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             switch self {
             case .truck: return "Truck Settings"
             case .navigation: return "Navigation"
+            case .hazards: return "Hazard Warnings"
             case .map: return "Map Display"
             case .search: return "Search"
             case .system: return "System"
@@ -84,6 +86,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         switch settingsSection {
         case .truck: return 3
         case .navigation: return 4
+        case .hazards: return 2
         case .map: return 3
         case .search: return 2
         case .system: return 4
@@ -104,6 +107,8 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             return configureTruckCell(for: indexPath)
         case .navigation:
             return configureNavigationCell(for: indexPath)
+        case .hazards:
+            return configureHazardsCell(for: indexPath)
         case .map:
             return configureMapCell(for: indexPath)
         case .search:
@@ -167,6 +172,27 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             cell.textLabel?.text = "Avoid Ferries"
             cell.switchControl.isOn = TruckSettings.avoidFerries
             cell.switchControl.tag = 1003
+            cell.switchControl.addTarget(self, action: #selector(switchValueChanged(_:)), for: .valueChanged)
+            return cell
+        default:
+            return UITableViewCell()
+        }
+    }
+
+    private func configureHazardsCell(for indexPath: IndexPath) -> UITableViewCell {
+        switch indexPath.row {
+        case 0:
+            let cell = tableView.dequeueReusableCell(withIdentifier: "SwitchCell", for: indexPath) as! SwitchTableViewCell
+            cell.textLabel?.text = "Enable Hazard Warnings"
+            cell.switchControl.isOn = TruckSettings.enableHazardWarnings
+            cell.switchControl.tag = 1501
+            cell.switchControl.addTarget(self, action: #selector(switchValueChanged(_:)), for: .valueChanged)
+            return cell
+        case 1:
+            let cell = tableView.dequeueReusableCell(withIdentifier: "SwitchCell", for: indexPath) as! SwitchTableViewCell
+            cell.textLabel?.text = "Enable Audio Alerts"
+            cell.switchControl.isOn = TruckSettings.enableHazardAudio
+            cell.switchControl.tag = 1502
             cell.switchControl.addTarget(self, action: #selector(switchValueChanged(_:)), for: .valueChanged)
             return cell
         default:
@@ -254,6 +280,9 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             handleTruckSetting(at: indexPath.row)
         case .navigation:
             handleNavigationSetting(at: indexPath.row)
+        case .hazards:
+            // Hazards are toggle switches - no tap action needed
+            break
         case .map:
             handleMapSetting(at: indexPath.row)
         case .search:
@@ -365,6 +394,12 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         case 1003: // Avoid Ferries
             TruckSettings.avoidFerries = sender.isOn
             print("💾 Avoid ferries: \(sender.isOn)")
+        case 1501: // Enable Hazard Warnings
+            TruckSettings.enableHazardWarnings = sender.isOn
+            print("💾 Hazard warnings: \(sender.isOn)")
+        case 1502: // Enable Hazard Audio
+            TruckSettings.enableHazardAudio = sender.isOn
+            print("💾 Hazard audio alerts: \(sender.isOn)")
         case 2001: // Hazmat
             TruckSettings.hazmat = sender.isOn
             print("💾 Hazmat cargo: \(sender.isOn)")
