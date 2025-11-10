@@ -216,12 +216,10 @@ class MapViewController: UIViewController {
         navigationMapView.frame = view.bounds
         navigationMapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
-        // Use 2D puck with heading-based bearing for directional rotation
-        var puckConfig = Puck2DConfiguration.makeDefault(showBearing: true)
-        puckConfig.bearingImage = puckConfig.topImage // Use same image for bearing
-        navigationMapView.puckType = .puck2D(puckConfig)
+        // Use 2D puck for maximum reliability (Mapbox recommended)
+        navigationMapView.puckType = .puck2D(.navigationDefault)
 
-        // Enable bearing tracking and use heading (compass) instead of course (movement direction)
+        // Enable bearing tracking for directional indicator
         navigationMapView.mapView.location.options.puckBearingEnabled = true
 
         view.addSubview(navigationMapView)
@@ -988,10 +986,8 @@ class MapViewController: UIViewController {
         navigationMapView.navigationCamera.stop()
         navigationMapView.navigationCamera.update(cameraState: .idle)
 
-        // Re-enable puck with heading-based bearing
-        var puckConfig = Puck2DConfiguration.makeDefault(showBearing: true)
-        puckConfig.bearingImage = puckConfig.topImage
-        navigationMapView.puckType = .puck2D(puckConfig)
+        // Re-enable puck
+        navigationMapView.puckType = .puck2D(.navigationDefault)
         navigationMapView.mapView.location.options.puckBearingEnabled = true
 
         // Restart free-drive mode
@@ -1034,10 +1030,8 @@ class MapViewController: UIViewController {
         navigationMapView.navigationCamera.stop()
         navigationMapView.navigationCamera.update(cameraState: .idle)
 
-        // CRITICAL FIX: Re-enable puck with heading-based bearing (showcase() may have modified it)
-        var puckConfig = Puck2DConfiguration.makeDefault(showBearing: true)
-        puckConfig.bearingImage = puckConfig.topImage
-        navigationMapView.puckType = .puck2D(puckConfig)
+        // CRITICAL FIX: Re-enable puck (showcase() may have modified it)
+        navigationMapView.puckType = .puck2D(.navigationDefault)
         navigationMapView.mapView.location.options.puckBearingEnabled = true
 
         // Clear stored route data
