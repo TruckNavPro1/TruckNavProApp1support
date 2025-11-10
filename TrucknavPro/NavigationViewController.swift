@@ -347,7 +347,7 @@ class MapViewController: UIViewController {
 
         NSLayoutConstraint.activate([
             recenterButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            recenterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            recenterButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 80),
             recenterButton.widthAnchor.constraint(equalToConstant: 44),
             recenterButton.heightAnchor.constraint(equalToConstant: 44)
         ])
@@ -533,6 +533,13 @@ class MapViewController: UIViewController {
         // Get current camera state
         let currentCamera = navigationMapView.mapView.cameraState
 
+        // Only update if bearing changed significantly (avoid micro-adjustments that cause pauses)
+        let currentBearing = currentCamera.bearing ?? 0
+        let bearingDiff = abs(bearing - currentBearing)
+
+        // Ignore tiny changes (less than 2 degrees) to reduce jitter
+        guard bearingDiff > 2 || bearingDiff > 358 else { return }
+
         // Create updated camera options with new bearing
         let cameraOptions = CameraOptions(
             center: currentCamera.center,
@@ -542,11 +549,11 @@ class MapViewController: UIViewController {
             pitch: 45  // Maintain elevated pitch for better 3D view
         )
 
-        // Smooth update with quick 300ms easing
+        // Ultra-smooth update with faster 150ms easing and easeOut curve for natural deceleration
         navigationMapView.mapView.camera.ease(
             to: cameraOptions,
-            duration: 0.3,
-            curve: .linear,
+            duration: 0.15,
+            curve: .easeOut,
             completion: nil
         )
     }
