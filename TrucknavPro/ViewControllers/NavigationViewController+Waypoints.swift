@@ -45,8 +45,8 @@ extension MapViewController {
         stopsPanelTrailingConstraint = stopsPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor)
 
         NSLayoutConstraint.activate([
-            // Add Stop button (stacked below test paywall button)
-            addStopButton.topAnchor.constraint(equalTo: testPaywallButton.bottomAnchor, constant: 16),
+            // Add Stop button (stacked below settings button)
+            addStopButton.topAnchor.constraint(equalTo: settingsButton.bottomAnchor, constant: 16),
             addStopButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             addStopButton.widthAnchor.constraint(equalToConstant: 44),
             addStopButton.heightAnchor.constraint(equalToConstant: 44),

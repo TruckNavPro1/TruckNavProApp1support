@@ -57,6 +57,8 @@ class MapViewController: UIViewController {
     private let routeDistanceLabel = UILabel()
     private let routeDurationLabel = UILabel()
     private let routeETALabel = UILabel()
+    private let routeSelectionLabel = UILabel()  // Shows "Route 1 of 3"
+    private let nextRouteButton = UIButton(type: .system)  // Cycle through alternatives
     private let startNavigationButton = UIButton(type: .system)
     private let cancelRouteButton = UIButton(type: .system)
 
@@ -128,23 +130,6 @@ class MapViewController: UIViewController {
         button.layer.shadowRadius = 4
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
-        return button
-    }()
-
-    // TEST BUTTON - Shows paywall for preview
-    lazy var testPaywallButton: UIButton = {
-        let button = UIButton(type: .system)
-        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
-        button.setImage(UIImage(systemName: "dollarsign.circle.fill", withConfiguration: config), for: .normal)
-        button.backgroundColor = .systemBackground
-        button.tintColor = .systemGreen
-        button.layer.cornerRadius = 22
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.2
-        button.layer.shadowOffset = CGSize(width: 0, height: 2)
-        button.layer.shadowRadius = 4
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.addTarget(self, action: #selector(showTestPaywall), for: .touchUpInside)
         return button
     }()
 
@@ -267,7 +252,6 @@ class MapViewController: UIViewController {
         setupRoutePreviewUI()
         setupRecenterButton()
         setupSettingsButton()
-        setupTestPaywallButton()  // TEST BUTTON
         setupWeatherWidget()
         setupTrafficWidget()
         setupWaypointUI()  // Multi-stop routing UI
@@ -276,7 +260,6 @@ class MapViewController: UIViewController {
         // Ensure proper z-ordering (bring controls to front)
         view.bringSubviewToFront(recenterButton)
         view.bringSubviewToFront(settingsButton)
-        view.bringSubviewToFront(testPaywallButton)  // TEST BUTTON
         view.bringSubviewToFront(weatherWidget)
         view.bringSubviewToFront(trafficWidget)
         view.bringSubviewToFront(speedLimitView)
@@ -574,17 +557,6 @@ class MapViewController: UIViewController {
         ])
     }
 
-    private func setupTestPaywallButton() {
-        view.addSubview(testPaywallButton)
-
-        NSLayoutConstraint.activate([
-            testPaywallButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            testPaywallButton.topAnchor.constraint(equalTo: settingsButton.bottomAnchor, constant: 16),
-            testPaywallButton.widthAnchor.constraint(equalToConstant: 44),
-            testPaywallButton.heightAnchor.constraint(equalToConstant: 44)
-        ])
-    }
-
     private func setupWeatherWidget() {
         view.addSubview(weatherWidget)
 
@@ -675,13 +647,6 @@ class MapViewController: UIViewController {
         print("⚙️ Opening settings")
     }
 
-    @objc private func showTestPaywall() {
-        let paywallVC = PaywallViewController()
-        paywallVC.modalPresentationStyle = .pageSheet
-        present(paywallVC, animated: true)
-        print("💰 Showing paywall for preview")
-    }
-
     // MARK: - Free-Drive Mode UI
 
     private func setupFreeDriveUI() {
@@ -743,9 +708,9 @@ class MapViewController: UIViewController {
         if cancelables.isEmpty {
             // Subscribe to location matching for speed limit and road name
             navigationProvider.mapboxNavigation.navigation().locationMatching.sink { [weak self] state in
-                guard let self = self, !self.isNavigating else { return }
+                guard let self = self else { return }
 
-                // Update speed limit (using Mapbox SpeedLimitView)
+                // Update speed limit (using Mapbox SpeedLimitView) - show during both free drive AND navigation
                 if let speedLimit = state.speedLimit.value {
                     self.speedLimitView.signStandard = state.speedLimit.signStandard
                     self.speedLimitView.speedLimit = speedLimit
@@ -1007,6 +972,22 @@ class MapViewController: UIViewController {
         routeETALabel.translatesAutoresizingMaskIntoConstraints = false
         routePreviewContainer.addSubview(routeETALabel)
 
+        // Route selection label (e.g., "Route 1 of 3")
+        routeSelectionLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        routeSelectionLabel.textColor = .secondaryLabel
+        routeSelectionLabel.translatesAutoresizingMaskIntoConstraints = false
+        routePreviewContainer.addSubview(routeSelectionLabel)
+
+        // Next route button
+        nextRouteButton.setTitle("Next Route", for: .normal)
+        nextRouteButton.backgroundColor = .systemGray6
+        nextRouteButton.setTitleColor(.label, for: .normal)
+        nextRouteButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
+        nextRouteButton.layer.cornerRadius = 8
+        nextRouteButton.translatesAutoresizingMaskIntoConstraints = false
+        nextRouteButton.addTarget(self, action: #selector(cycleToNextRoute), for: .touchUpInside)
+        routePreviewContainer.addSubview(nextRouteButton)
+
         // Cancel button
         cancelRouteButton.setTitle("Cancel", for: .normal)
         cancelRouteButton.backgroundColor = .systemGray5
@@ -1043,6 +1024,15 @@ class MapViewController: UIViewController {
             routeETALabel.topAnchor.constraint(equalTo: routeDistanceLabel.bottomAnchor, constant: 4),
             routeETALabel.leadingAnchor.constraint(equalTo: routePreviewContainer.leadingAnchor, constant: 20),
 
+            // Route selection UI (middle row)
+            routeSelectionLabel.topAnchor.constraint(equalTo: routeETALabel.bottomAnchor, constant: 12),
+            routeSelectionLabel.leadingAnchor.constraint(equalTo: routePreviewContainer.leadingAnchor, constant: 20),
+
+            nextRouteButton.centerYAnchor.constraint(equalTo: routeSelectionLabel.centerYAnchor),
+            nextRouteButton.leadingAnchor.constraint(equalTo: routeSelectionLabel.trailingAnchor, constant: 12),
+            nextRouteButton.widthAnchor.constraint(equalToConstant: 100),
+            nextRouteButton.heightAnchor.constraint(equalToConstant: 32),
+
             // Buttons at bottom
             cancelRouteButton.bottomAnchor.constraint(equalTo: routePreviewContainer.bottomAnchor, constant: -16),
             cancelRouteButton.leadingAnchor.constraint(equalTo: routePreviewContainer.leadingAnchor, constant: 16),
@@ -1063,11 +1053,9 @@ class MapViewController: UIViewController {
 
         // Auto-collapse stops panel when route preview appears
         if !stopsPanel.isHidden && !isStopsPanelCollapsed {
+            print("📍 Auto-collapsing stops panel for route preview")
             isStopsPanelCollapsed = true
-            stopsPanel.transform = .identity  // Clear any transform
-            stopsPanelTrailingConstraint?.constant = -250  // Collapse to 50px edge
-            view.layoutIfNeeded()
-            print("📍 Auto-collapsed stops panel for route preview")
+            animateCollapsedState()  // Use existing animation function
         }
 
         // Use Mapbox NavigationMapView's showcase() method to display route with all alternatives
@@ -1099,6 +1087,20 @@ class MapViewController: UIViewController {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         routeETALabel.text = "Arrive by \(formatter.string(from: eta))"
+
+        // Update route selection UI
+        let totalRoutes = 1 + navigationRoutes.alternativeRoutes.count
+        let currentRouteNum = (selectedAlternativeRouteIndex ?? -1) + 2  // -1 = main (route 1), 0+ = alternatives
+        routeSelectionLabel.text = "Route \(currentRouteNum) of \(totalRoutes)"
+
+        // Show/hide next route button based on whether alternatives exist
+        if totalRoutes > 1 {
+            nextRouteButton.isHidden = false
+            routeSelectionLabel.isHidden = false
+        } else {
+            nextRouteButton.isHidden = true
+            routeSelectionLabel.isHidden = true
+        }
 
         // Show route preview card
         routePreviewContainer.isHidden = false
@@ -1234,6 +1236,44 @@ class MapViewController: UIViewController {
         routeETALabel.text = "Arrive by \(formatter.string(from: eta))"
 
         print("✅ Selected alternative route \(index + 1) - preview updated")
+
+        // Update route selection label
+        let totalRoutes = 1 + routes.alternativeRoutes.count
+        let currentRouteNum = index + 2  // index 0 = route 2, etc
+        routeSelectionLabel.text = "Route \(currentRouteNum) of \(totalRoutes)"
+    }
+
+    @objc private func cycleToNextRoute() {
+        guard let routes = currentNavigationRoutes else { return }
+
+        let totalRoutes = 1 + routes.alternativeRoutes.count
+        guard totalRoutes > 1 else { return }  // Only cycle if alternatives exist
+
+        // Calculate next route index
+        let currentIndex = selectedAlternativeRouteIndex ?? -1  // -1 = main route
+        let nextIndex: Int?
+
+        if currentIndex == -1 {
+            // Currently on main route, switch to first alternative
+            nextIndex = 0
+        } else if currentIndex < routes.alternativeRoutes.count - 1 {
+            // Switch to next alternative
+            nextIndex = currentIndex + 1
+        } else {
+            // Wrap around to main route
+            nextIndex = nil
+        }
+
+        // Switch to the calculated route
+        if let next = nextIndex {
+            print("🔄 Cycling to alternative route \(next + 1)")
+            switchToAlternativeRoute(at: next)
+        } else {
+            // Switch back to main route
+            print("🔄 Cycling back to main route")
+            selectedAlternativeRouteIndex = nil
+            showRoutePreview(for: routes)  // Re-show with main route
+        }
     }
 
     // MARK: - Universal Route Cancellation

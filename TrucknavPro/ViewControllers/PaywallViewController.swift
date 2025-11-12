@@ -166,19 +166,46 @@ class PaywallViewController: UIViewController {
     }
 
     private func displayPackages() {
-        guard let offerings = offerings,
-              let current = offerings.current else {
+        guard let offerings = offerings else {
+            print("❌ No offerings available")
+            showError("No subscription options available. Please check your RevenueCat configuration.")
             return
         }
 
+        guard let current = offerings.current else {
+            print("❌ No current offering set in RevenueCat")
+            print("📦 Available offerings: \(offerings.all.keys.joined(separator: ", "))")
+
+            // Try to use the first available offering if current is not set
+            if let firstOffering = offerings.all.values.first {
+                print("ℹ️ Using first available offering: \(firstOffering.identifier)")
+                displayPackagesFromOffering(firstOffering)
+            } else {
+                showError("No current offering is set in RevenueCat. Please set a 'current' offering in your RevenueCat dashboard.")
+            }
+            return
+        }
+
+        displayPackagesFromOffering(current)
+    }
+
+    private func displayPackagesFromOffering(_ offering: Offering) {
         // Clear existing package views
         packageStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
+        guard !offering.availablePackages.isEmpty else {
+            print("❌ No packages available in offering")
+            showError("No subscription packages available. Please configure products in RevenueCat.")
+            return
+        }
+
         // Add package cards
-        for package in current.availablePackages {
+        for package in offering.availablePackages {
             let packageView = createPackageView(for: package)
             packageStackView.addArrangedSubview(packageView)
         }
+
+        print("✅ Displayed \(offering.availablePackages.count) packages from offering '\(offering.identifier)'")
     }
 
     private func createPackageView(for package: Package) -> UIView {
