@@ -122,19 +122,9 @@ class LoginViewController: UIViewController {
         return indicator
     }()
 
-    private let skipButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Continue without account", for: .normal)
-        button.setTitleColor(.white.withAlphaComponent(0.8), for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 14)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-
     // MARK: - Properties
 
     var onAuthenticationSuccess: (() -> Void)?
-    var onSkipAuthentication: (() -> Void)?
 
     // MARK: - Lifecycle
 
@@ -163,13 +153,11 @@ class LoginViewController: UIViewController {
         contentView.addSubview(passwordTextField)
         contentView.addSubview(signInButton)
         contentView.addSubview(signUpButton)
-        contentView.addSubview(skipButton)
         view.addSubview(activityIndicator)
 
         // Button actions
         signInButton.addTarget(self, action: #selector(signInTapped), for: .touchUpInside)
         signUpButton.addTarget(self, action: #selector(signUpTapped), for: .touchUpInside)
-        skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
 
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -237,11 +225,7 @@ class LoginViewController: UIViewController {
             signUpButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
             signUpButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
             signUpButton.heightAnchor.constraint(equalToConstant: 54),
-
-            // Skip Button
-            skipButton.topAnchor.constraint(equalTo: signUpButton.bottomAnchor, constant: 24),
-            skipButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            skipButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -40),
+            signUpButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -40),
 
             // Activity Indicator
             activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -299,10 +283,6 @@ class LoginViewController: UIViewController {
         Task {
             await performSignUp(email: email, password: password)
         }
-    }
-
-    @objc private func skipTapped() {
-        onSkipAuthentication?()
     }
 
     @objc private func dismissKeyboard() {
