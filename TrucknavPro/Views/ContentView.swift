@@ -9,6 +9,7 @@ struct ContentView: View {
 
     @StateObject private var authManager = AuthManager.shared
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @AppStorage("isAnonymousMode") private var isAnonymousMode = false
 
     var body: some View {
         Group {
@@ -27,10 +28,16 @@ struct ContentView: View {
                     })
                     .ignoresSafeArea()
                 }
-            } else {
-                // Login screen - not authenticated
-                LoginViewControllerRepresentable()
+            } else if isAnonymousMode {
+                // User skipped authentication - show main app
+                NavigationViewControllerRepresentable()
                     .ignoresSafeArea()
+            } else {
+                // Login screen - not authenticated and not anonymous
+                LoginViewControllerRepresentable(onSkip: {
+                    isAnonymousMode = true
+                })
+                .ignoresSafeArea()
             }
         }
     }
@@ -64,6 +71,8 @@ struct LoadingView: View {
 
 struct LoginViewControllerRepresentable: UIViewControllerRepresentable {
 
+    let onSkip: () -> Void
+
     func makeUIViewController(context: Context) -> LoginViewController {
         let loginVC = LoginViewController()
 
@@ -73,13 +82,8 @@ struct LoginViewControllerRepresentable: UIViewControllerRepresentable {
         }
 
         loginVC.onSkipAuthentication = {
-            // User skipped login - go directly to app
-            Task {
-                await MainActor.run {
-                    // Force set hasSeenWelcome to true so app shows map
-                    UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
-                }
-            }
+            // User skipped login - trigger anonymous mode
+            onSkip()
         }
 
         return loginVC

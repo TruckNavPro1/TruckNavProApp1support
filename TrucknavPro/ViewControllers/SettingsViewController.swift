@@ -411,6 +411,9 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
                     // Reset welcome screen flag so they see it again on next login
                     UserDefaults.standard.removeObject(forKey: "hasSeenWelcome")
 
+                    // Clear anonymous mode flag
+                    UserDefaults.standard.removeObject(forKey: "isAnonymousMode")
+
                     // Reload settings to update UI
                     tableView.reloadData()
 
