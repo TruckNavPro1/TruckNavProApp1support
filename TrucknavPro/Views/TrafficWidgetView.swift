@@ -13,7 +13,16 @@ class TrafficWidgetView: UIView {
     // MARK: - Properties
 
     private var updateTimer: Timer?
-    private let updateInterval: TimeInterval = 30  // Update every 30 seconds
+    private let updateInterval: TimeInterval = 300  // Update every 5 minutes
+    private var lastTrafficData: (level: TrafficCongestionLevel, currentSpeed: Int, freeFlowSpeed: Int, incidents: [String])?
+
+    // Store location and services for manual refresh
+    private var lastLocation: CLLocationCoordinate2D?
+    private weak var hereService: HERETrafficService?
+    private weak var tomTomService: TomTomTrafficService?
+
+    // Callback to notify when incidents are fetched (for displaying on map)
+    var onIncidentsFetched: (([HERETrafficService.TrafficIncident]) -> Void)?
 
     // MARK: - UI Components
 
@@ -50,6 +59,7 @@ class TrafficWidgetView: UIView {
         let label = UILabel()
         label.font = .systemFont(ofSize: 20, weight: .bold)
         label.textColor = .white
+        label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -58,6 +68,7 @@ class TrafficWidgetView: UIView {
         let label = UILabel()
         label.font = .systemFont(ofSize: 14, weight: .medium)
         label.textColor = .white.withAlphaComponent(0.85)
+        label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -66,7 +77,7 @@ class TrafficWidgetView: UIView {
         let label = UILabel()
         label.font = .systemFont(ofSize: 12, weight: .regular)
         label.textColor = .white.withAlphaComponent(0.8)
-        label.numberOfLines = 2
+        label.numberOfLines = 3
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -84,12 +95,14 @@ class TrafficWidgetView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupView()
+        setupTapGesture()
         showLoading()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setupView()
+        setupTapGesture()
         showLoading()
     }
 
@@ -98,6 +111,27 @@ class TrafficWidgetView: UIView {
     }
 
     // MARK: - Setup
+
+    private func setupTapGesture() {
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+        containerView.addGestureRecognizer(tapGesture)
+        containerView.isUserInteractionEnabled = true
+    }
+
+    @objc private func handleTap() {
+        // Trigger manual refresh when user taps widget
+        manualRefresh()
+    }
+
+    private func manualRefresh() {
+        guard let location = lastLocation else {
+            print("⚠️ Cannot refresh: location not available")
+            return
+        }
+
+        print("🔄 Manual traffic refresh triggered by user")
+        fetchTrafficData(location: location, hereService: hereService, tomTomService: tomTomService)
+    }
 
     private func setupView() {
         addSubview(containerView)
@@ -142,6 +176,9 @@ class TrafficWidgetView: UIView {
         freeFlowSpeed: Int,
         nearbyIncidents: [String]
     ) {
+        // Store data for tap gesture
+        lastTrafficData = (congestionLevel, currentSpeed, freeFlowSpeed, nearbyIncidents)
+
         activityIndicator.stopAnimating()
         statusIcon.isHidden = false
 
@@ -151,21 +188,31 @@ class TrafficWidgetView: UIView {
         statusIcon.image = UIImage(systemName: icon)
         statusIcon.tintColor = color
 
-        // Speed info
+        // Speed info with clear labels
         if currentSpeed > 0 {
-            speedLabel.text = "\(currentSpeed) mph (avg: \(freeFlowSpeed) mph)"
+            if congestionLevel == .freeFlow {
+                speedLabel.text = "Traffic flowing at \(currentSpeed) mph"
+            } else {
+                speedLabel.text = "Current: \(currentSpeed) mph\nNormal: \(freeFlowSpeed) mph"
+            }
         } else {
             speedLabel.text = "Speed data unavailable"
         }
 
-        // Incident info
+        // Incident info - show actual incident description
         if !nearbyIncidents.isEmpty {
-            incidentLabel.text = "⚠️ \(nearbyIncidents.count) incident(s) nearby"
+            // Show the first incident description (most relevant)
+            let firstIncident = nearbyIncidents[0]
+            if nearbyIncidents.count > 1 {
+                incidentLabel.text = "⚠️ \(firstIncident) +\(nearbyIncidents.count - 1) more"
+            } else {
+                incidentLabel.text = "⚠️ \(firstIncident)"
+            }
         } else {
-            incidentLabel.text = "No incidents reported"
+            incidentLabel.text = "No incidents"
         }
 
-        print("🚦 Traffic widget updated: \(status)")
+        print("🚦 Traffic widget updated: \(status) - Current: \(currentSpeed) mph, Normal: \(freeFlowSpeed) mph")
     }
 
     func showLoading() {
@@ -194,6 +241,11 @@ class TrafficWidgetView: UIView {
         tomTomService: TomTomTrafficService?
     ) {
         stopAutoUpdate()
+
+        // Store for manual refresh
+        self.lastLocation = location
+        self.hereService = hereService
+        self.tomTomService = tomTomService
 
         // Initial fetch
         fetchTrafficData(location: location, hereService: hereService, tomTomService: tomTomService)
@@ -258,12 +310,23 @@ class TrafficWidgetView: UIView {
                     let currentSpeedMph = Int(flow.currentSpeed * 0.621371)
                     let freeFlowSpeedMph = Int(flow.freeFlowSpeed * 0.621371)
 
+                    print("🚦 HERE Traffic speeds - Raw: \(flow.currentSpeed) km/h, \(flow.freeFlowSpeed) km/h → Converted: \(currentSpeedMph) mph, \(freeFlowSpeedMph) mph")
+                    print("🚦 Jam Factor: \(flow.jamFactor), Confidence: \(flow.confidence), Road Type: \(flow.roadType)")
+
+                    // Validation: If speeds are suspiciously low (< 15 mph) but marked as free flow, something is wrong
+                    if congestion == .freeFlow && currentSpeedMph < 15 {
+                        print("⚠️ WARNING: Free Flow but speed only \(currentSpeedMph) mph - HERE data may be incorrect")
+                    }
+
                     // Fetch nearby incidents (within 10km radius)
                     let bbox = self?.getBoundingBox(center: location, radiusKm: 10) ?? (0, 0, 0, 0)
                     service.getTrafficIncidents(in: bbox) { incidentResult in
                         DispatchQueue.main.async {
                             let incidents = (try? incidentResult.get()) ?? []
                             let incidentDescriptions = incidents.prefix(3).map { $0.description }
+
+                            // Notify map to display incident markers
+                            self?.onIncidentsFetched?(incidents)
 
                             self?.configure(
                                 congestionLevel: congestion,
@@ -356,6 +419,19 @@ enum TrafficCongestionLevel: Int {
             return ("Congestion", "exclamationmark.circle.fill", .systemOrange)
         case .heavy:
             return ("Heavy Traffic", "xmark.circle.fill", .systemRed)
+        }
+    }
+
+    var jamFactorDescription: String {
+        switch self {
+        case .freeFlow:
+            return "< 2.0 (Smooth traffic, minimal delays)"
+        case .slow:
+            return "2.0 - 4.9 (Slower than usual)"
+        case .congestion:
+            return "5.0 - 7.9 (Significant slowdowns)"
+        case .heavy:
+            return "≥ 8.0 (Stop-and-go traffic)"
         }
     }
 }

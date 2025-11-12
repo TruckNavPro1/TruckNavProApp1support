@@ -8,6 +8,7 @@
 import UIKit
 import CoreLocation
 import Foundation
+import MapboxMaps
 
 extension MapViewController {
 
@@ -53,6 +54,11 @@ extension MapViewController {
             trafficWidget.widthAnchor.constraint(lessThanOrEqualToConstant: 180)
         ])
 
+        // Set up callback to display incidents on map
+        trafficWidget.onIncidentsFetched = { [weak self] incidents in
+            self?.displayHERETrafficIncidents(incidents)
+        }
+
         // Start auto-update if location is available
         if let location = locationManager.location {
             if hereTrafficService != nil || tomTomTrafficService != nil {
@@ -95,5 +101,80 @@ extension MapViewController {
     func stopTrafficWidget() {
         trafficWidget.stopAutoUpdate()
         print("🚦 Traffic widget stopped")
+    }
+
+    // MARK: - Display Incidents on Map
+
+    func displayHERETrafficIncidents(_ incidents: [HERETrafficService.TrafficIncident]) {
+        guard let manager = incidentAnnotationManager else { return }
+
+        // Clear old annotations
+        manager.annotations = []
+
+        // Don't add annotations if none exist
+        guard !incidents.isEmpty else {
+            print("🗺️ No traffic incidents to display on map")
+            return
+        }
+
+        // Create annotations for each incident
+        var annotations: [PointAnnotation] = []
+
+        for incident in incidents {
+            var annotation = PointAnnotation(coordinate: incident.coordinate)
+
+            // Set icon based on type/severity
+            let iconName: String
+            let iconColor: UIColor
+
+            switch incident.severity {
+            case 3: // Critical (road closure, major accident)
+                iconName = "xmark.octagon.fill"
+                iconColor = .systemRed
+            case 2: // Major (accident, heavy congestion)
+                iconName = "exclamationmark.triangle.fill"
+                iconColor = .systemOrange
+            case 1: // Minor (light congestion)
+                iconName = "exclamationmark.circle.fill"
+                iconColor = .systemYellow
+            default:
+                iconName = "info.circle.fill"
+                iconColor = .systemBlue
+            }
+
+            annotation.image = .init(image: createIncidentIcon(iconName: iconName, color: iconColor), name: "\(incident.id)-icon")
+            annotation.iconAnchor = .center
+
+            annotations.append(annotation)
+        }
+
+        manager.annotations = annotations
+        print("🗺️ Displayed \(annotations.count) traffic incidents on map")
+    }
+
+    private func createIncidentIcon(iconName: String, color: UIColor) -> UIImage {
+        let size = CGSize(width: 32, height: 32)
+        let renderer = UIGraphicsImageRenderer(size: size)
+
+        return renderer.image { context in
+            // Draw background circle
+            color.setFill()
+            let circlePath = UIBezierPath(ovalIn: CGRect(origin: .zero, size: size))
+            circlePath.fill()
+
+            // Draw SF Symbol icon
+            if let symbol = UIImage(systemName: iconName) {
+                let symbolSize: CGFloat = 20
+                let symbolRect = CGRect(
+                    x: (size.width - symbolSize) / 2,
+                    y: (size.height - symbolSize) / 2,
+                    width: symbolSize,
+                    height: symbolSize
+                )
+
+                UIColor.white.setFill()
+                symbol.draw(in: symbolRect, blendMode: .normal, alpha: 1.0)
+            }
+        }
     }
 }

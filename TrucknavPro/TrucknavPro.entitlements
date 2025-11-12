@@ -15,6 +15,6 @@
 	<key>com.apple.developer.ubiquity-container-identifiers</key>
 	<array/>
 	<key>com.apple.developer.weatherkit</key>
-	<false/>
+	<true/>
 </dict>
 </plist>

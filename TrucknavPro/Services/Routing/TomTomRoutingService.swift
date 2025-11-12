@@ -9,11 +9,13 @@ import CoreLocation
 // MARK: - Truck Parameters
 
 struct TruckParameters {
-    var weight: Int? // kg
-    var axleWeight: Int? // kg
-    var length: Double? // meters
-    var width: Double? // meters
-    var height: Double? // meters
+    // IMPERIAL UNITS (Primary storage - American standards)
+    var weightLbs: Int?         // pounds (max 80,000 lbs)
+    var axleWeightLbs: Int?     // pounds (tandem: 34,000 lbs, single: 20,000 lbs)
+    var lengthFeet: Double?     // feet (typical: 53 ft for trailer)
+    var widthFeet: Double?      // feet (standard: 8.5 ft, max: 8.6 ft)
+    var heightFeet: Double?     // feet (standard: 13.5 ft / 13'6")
+
     var commercialVehicle: Bool = true
     var loadType: [String]? // e.g., ["USHazmatClass1", "USHazmatClass2"]
 
@@ -25,22 +27,69 @@ struct TruckParameters {
     var avoidTunnels: Bool = false // Enable for hazmat
     var avoidBorderCrossings: Bool = false
 
+    // MARK: - Default US Semi-Truck Configuration
+    static var standardSemiTruck: TruckParameters {
+        return TruckParameters(
+            weightLbs: 80000,           // Federal max: 80,000 lbs
+            axleWeightLbs: 34000,       // Tandem axle max: 34,000 lbs
+            lengthFeet: 70.0,           // Tractor (17') + Trailer (53') = 70 ft total
+            widthFeet: 8.5,             // Standard width: 8.5 ft (102 inches)
+            heightFeet: 13.5,           // Standard height: 13.5 ft (13'6")
+            commercialVehicle: true,
+            loadType: nil,
+            avoidTolls: false,
+            avoidMotorways: false,
+            avoidFerries: false,
+            avoidUnpavedRoads: true,
+            avoidTunnels: false,
+            avoidBorderCrossings: false
+        )
+    }
+
+    // MARK: - Unit Conversions (for API calls - TomTom requires metric)
+
+    private var weightKg: Int? {
+        guard let lbs = weightLbs else { return nil }
+        return Int(Double(lbs) * 0.453592) // 1 lb = 0.453592 kg
+    }
+
+    private var axleWeightKg: Int? {
+        guard let lbs = axleWeightLbs else { return nil }
+        return Int(Double(lbs) * 0.453592)
+    }
+
+    private var lengthMeters: Double? {
+        guard let feet = lengthFeet else { return nil }
+        return feet * 0.3048 // 1 ft = 0.3048 m
+    }
+
+    private var widthMeters: Double? {
+        guard let feet = widthFeet else { return nil }
+        return feet * 0.3048
+    }
+
+    private var heightMeters: Double? {
+        guard let feet = heightFeet else { return nil }
+        return feet * 0.3048
+    }
+
     func toQueryParameters() -> [String: String] {
         var params: [String: String] = [:]
 
-        if let weight = weight {
+        // Convert Imperial to Metric for TomTom API
+        if let weight = weightKg {
             params["vehicleWeight"] = "\(weight)"
         }
-        if let axleWeight = axleWeight {
+        if let axleWeight = axleWeightKg {
             params["vehicleAxleWeight"] = "\(axleWeight)"
         }
-        if let length = length {
+        if let length = lengthMeters {
             params["vehicleLength"] = String(format: "%.2f", length)
         }
-        if let width = width {
+        if let width = widthMeters {
             params["vehicleWidth"] = String(format: "%.2f", width)
         }
-        if let height = height {
+        if let height = heightMeters {
             params["vehicleHeight"] = String(format: "%.2f", height)
         }
         if commercialVehicle {
@@ -64,6 +113,52 @@ struct TruckParameters {
         }
 
         return params
+    }
+
+    // MARK: - Display Helpers (for UI - user preference)
+
+    func displayWeight(useMetric: Bool = false) -> String? {
+        guard let lbs = weightLbs else { return nil }
+        if useMetric {
+            let kg = weightKg ?? 0
+            return "\(kg) kg"
+        } else {
+            return "\(lbs) lbs"
+        }
+    }
+
+    func displayHeight(useMetric: Bool = false) -> String? {
+        guard let feet = heightFeet else { return nil }
+        if useMetric {
+            let meters = heightMeters ?? 0
+            return String(format: "%.2f m", meters)
+        } else {
+            let inches = Int((feet.truncatingRemainder(dividingBy: 1)) * 12)
+            let wholeFeet = Int(feet)
+            return inches > 0 ? "\(wholeFeet)'\(inches)\"" : "\(wholeFeet)'"
+        }
+    }
+
+    func displayWidth(useMetric: Bool = false) -> String? {
+        guard let feet = widthFeet else { return nil }
+        if useMetric {
+            let meters = widthMeters ?? 0
+            return String(format: "%.2f m", meters)
+        } else {
+            let inches = Int((feet.truncatingRemainder(dividingBy: 1)) * 12)
+            let wholeFeet = Int(feet)
+            return inches > 0 ? "\(wholeFeet)'\(inches)\"" : "\(wholeFeet)'"
+        }
+    }
+
+    func displayLength(useMetric: Bool = false) -> String? {
+        guard let feet = lengthFeet else { return nil }
+        if useMetric {
+            let meters = lengthMeters ?? 0
+            return String(format: "%.1f m", meters)
+        } else {
+            return String(format: "%.1f ft", feet)
+        }
     }
 }
 

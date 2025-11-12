@@ -4,6 +4,7 @@
 //
 
 import UIKit
+import RevenueCat
 
 // MARK: - Settings Change Delegate
 
@@ -18,6 +19,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
     private let tableView = UITableView(frame: .zero, style: .insetGrouped)
 
     private enum SettingsSection: Int, CaseIterable {
+        case subscription
         case truck
         case navigation
         case hazards
@@ -27,6 +29,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
 
         var title: String {
             switch self {
+            case .subscription: return "Subscription"
             case .truck: return "Truck Settings"
             case .navigation: return "Navigation"
             case .hazards: return "Hazard Warnings"
@@ -84,12 +87,13 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         guard let settingsSection = SettingsSection(rawValue: section) else { return 0 }
 
         switch settingsSection {
+        case .subscription: return 2
         case .truck: return 3
         case .navigation: return 4
         case .hazards: return 2
         case .map: return 4
         case .search: return 2
-        case .system: return 4
+        case .system: return 6
         }
     }
 
@@ -103,6 +107,8 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         }
 
         switch section {
+        case .subscription:
+            return configureSubscriptionCell(for: indexPath)
         case .truck:
             return configureTruckCell(for: indexPath)
         case .navigation:
@@ -119,6 +125,27 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
     }
 
     // MARK: - Cell Configuration
+
+    private func configureSubscriptionCell(for indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "SettingCell", for: indexPath)
+
+        switch indexPath.row {
+        case 0:
+            cell.textLabel?.text = "⭐ Upgrade to Pro"
+            cell.textLabel?.textColor = .systemBlue
+            cell.textLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+            cell.accessoryType = .disclosureIndicator
+        case 1:
+            cell.textLabel?.text = "Restore Purchases"
+            cell.textLabel?.textColor = .label
+            cell.textLabel?.font = .systemFont(ofSize: 17, weight: .regular)
+            cell.accessoryType = .none
+        default:
+            break
+        }
+
+        return cell
+    }
 
     private func configureTruckCell(for indexPath: IndexPath) -> UITableViewCell {
         switch indexPath.row {
@@ -263,9 +290,15 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             cell.textLabel?.text = "Notifications"
             cell.accessoryType = .disclosureIndicator
         case 2:
-            cell.textLabel?.text = "Privacy"
+            cell.textLabel?.text = "Privacy Policy"
             cell.accessoryType = .disclosureIndicator
         case 3:
+            cell.textLabel?.text = "End User License Agreement"
+            cell.accessoryType = .disclosureIndicator
+        case 4:
+            cell.textLabel?.text = "Terms of Service"
+            cell.accessoryType = .disclosureIndicator
+        case 5:
             cell.textLabel?.text = "About"
             cell.accessoryType = .disclosureIndicator
         default:
@@ -283,6 +316,8 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         guard let section = SettingsSection(rawValue: indexPath.section) else { return }
 
         switch section {
+        case .subscription:
+            handleSubscriptionSetting(at: indexPath.row)
         case .truck:
             handleTruckSetting(at: indexPath.row)
         case .navigation:
@@ -296,6 +331,35 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             handleSearchSetting(at: indexPath.row)
         case .system:
             handleSystemSetting(at: indexPath.row)
+        }
+    }
+
+    private func handleSubscriptionSetting(at row: Int) {
+        switch row {
+        case 0:
+            // Show paywall
+            print("⭐ Opening upgrade screen")
+            let paywall = PaywallViewController()
+            let navController = UINavigationController(rootViewController: paywall)
+            navController.modalPresentationStyle = .pageSheet
+            present(navController, animated: true)
+        case 1:
+            // Restore purchases
+            print("🔄 Restoring purchases")
+            Task {
+                do {
+                    _ = try await RevenueCatService.shared.restorePurchases()
+                    await MainActor.run {
+                        showSuccessAlert("Purchases restored successfully!")
+                    }
+                } catch {
+                    await MainActor.run {
+                        showErrorAlert("Failed to restore purchases: \(error.localizedDescription)")
+                    }
+                }
+            }
+        default:
+            break
         }
     }
 
@@ -341,6 +405,19 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             alert.addAction(action)
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        // iPad popover configuration to prevent crash
+        if let popover = alert.popoverPresentationController {
+            if let cell = tableView.cellForRow(at: IndexPath(row: 0, section: 1)) {
+                popover.sourceView = cell
+                popover.sourceRect = cell.bounds
+            } else {
+                popover.sourceView = view
+                popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+        }
+
         present(alert, animated: true)
     }
 
@@ -377,11 +454,30 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
                 print("⚙️ Opening Notifications settings")
             }
         case 2:
-            if let url = URL(string: UIApplication.openSettingsURLString) {
+            // Privacy Policy
+            if let url = URL(string: "https://trucknavpro.com/privacy") {
                 UIApplication.shared.open(url)
-                print("⚙️ Opening Privacy settings")
+                print("📄 Opening Privacy Policy")
+            } else {
+                showErrorAlert("Privacy Policy URL not configured. Please contact support.")
             }
         case 3:
+            // EULA
+            if let url = URL(string: "https://trucknavpro.com/eula") {
+                UIApplication.shared.open(url)
+                print("📄 Opening EULA")
+            } else {
+                showErrorAlert("EULA URL not configured. Please contact support.")
+            }
+        case 4:
+            // Terms of Service
+            if let url = URL(string: "https://trucknavpro.com/terms") {
+                UIApplication.shared.open(url)
+                print("📄 Opening Terms of Service")
+            } else {
+                showErrorAlert("Terms URL not configured. Please contact support.")
+            }
+        case 5:
             showAboutView()
         default:
             break
@@ -502,6 +598,19 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         }
 
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        // iPad popover configuration to prevent crash
+        if let popover = alert.popoverPresentationController {
+            if let cell = tableView.cellForRow(at: IndexPath(row: 2, section: 3)) {
+                popover.sourceView = cell
+                popover.sourceRect = cell.bounds
+            } else {
+                popover.sourceView = view
+                popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+        }
+
         present(alert, animated: true)
     }
 
@@ -514,11 +623,36 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             })
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        // iPad popover configuration to prevent crash
+        if let popover = alert.popoverPresentationController {
+            if let cell = tableView.cellForRow(at: IndexPath(row: 0, section: 4)) {
+                popover.sourceView = cell
+                popover.sourceRect = cell.bounds
+            } else {
+                popover.sourceView = view
+                popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+        }
+
         present(alert, animated: true)
     }
 
     private func showAboutView() {
         let alert = UIAlertController(title: "TruckNav Pro", message: "Version 1.0.0\n\nTruck-specific navigation powered by Mapbox\n\n© 2025", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func showSuccessAlert(_ message: String) {
+        let alert = UIAlertController(title: "Success", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func showErrorAlert(_ message: String) {
+        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }

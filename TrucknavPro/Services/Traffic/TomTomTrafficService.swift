@@ -10,7 +10,7 @@ import MapboxMaps
 class TomTomTrafficService {
 
     private let apiKey: String
-    private let baseFlowURL = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
+    private let baseFlowURL = "https://api.tomtom.com/traffic/services/4/flowSegmentData"
     private let baseIncidentURL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
 
     init(apiKey: String) {
@@ -31,22 +31,42 @@ class TomTomTrafficService {
         at coordinate: CLLocationCoordinate2D,
         completion: @escaping (Result<TrafficFlow, Error>) -> Void
     ) {
-        let urlString = "\(baseFlowURL)?key=\(apiKey)&point=\(coordinate.latitude),\(coordinate.longitude)"
+        // Correct TomTom Traffic Flow API format: /absolute/{zoom}/json
+        let zoom = 10  // Zoom level for detail (10-22)
+        let urlString = "\(baseFlowURL)/absolute/\(zoom)/json?key=\(apiKey)&point=\(coordinate.latitude),\(coordinate.longitude)"
 
         guard let url = URL(string: urlString) else {
             completion(.failure(NSError(domain: "TomTomTraffic", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
             return
         }
 
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        print("🚦 Traffic Flow API URL: \(url.absoluteString)")
+
+        URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
+                print("❌ Traffic Flow network error: \(error.localizedDescription)")
                 completion(.failure(error))
                 return
+            }
+
+            // Check HTTP response status
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 Traffic Flow response status: \(httpResponse.statusCode)")
+                if httpResponse.statusCode != 200 {
+                    let errorMsg = "HTTP \(httpResponse.statusCode): \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))"
+                    completion(.failure(NSError(domain: "TomTomTraffic", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
+                    return
+                }
             }
 
             guard let data = data else {
                 completion(.failure(NSError(domain: "TomTomTraffic", code: -2, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
                 return
+            }
+
+            // Debug: Print response preview
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("📦 Traffic Flow response preview: \(jsonString.prefix(300))")
             }
 
             do {
@@ -99,23 +119,44 @@ class TomTomTrafficService {
         in boundingBox: (minLat: Double, minLon: Double, maxLat: Double, maxLon: Double),
         completion: @escaping (Result<[TrafficIncident], Error>) -> Void
     ) {
-        let bbox = "\(boundingBox.minLat),\(boundingBox.minLon),\(boundingBox.maxLat),\(boundingBox.maxLon)"
-        let urlString = "\(baseIncidentURL)?key=\(apiKey)&bbox=\(bbox)&timeValidityFilter=present&categoryFilter=1,2,3,8"
+        // TomTom Traffic Incidents API format: /incidentDetails/s3/{bbox}/10/json
+        // bbox format: minLon,minLat,maxLon,maxLat (note: lon,lat order!)
+        let bbox = "\(boundingBox.minLon),\(boundingBox.minLat),\(boundingBox.maxLon),\(boundingBox.maxLat)"
+        let urlString = "\(baseIncidentURL)/s3/\(bbox)/10/json?key=\(apiKey)&timeValidityFilter=present&categoryFilter=1,2,3,8"
 
         guard let url = URL(string: urlString) else {
             completion(.failure(NSError(domain: "TomTomTraffic", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
             return
         }
 
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        print("🚨 Traffic Incidents API URL: \(url.absoluteString)")
+
+        URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
+                print("❌ Traffic Incidents network error: \(error.localizedDescription)")
                 completion(.failure(error))
                 return
+            }
+
+            // Check HTTP response status
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 Traffic Incidents response status: \(httpResponse.statusCode)")
+                if httpResponse.statusCode != 200 {
+                    let errorMsg = "HTTP \(httpResponse.statusCode): \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))"
+                    print("❌ \(errorMsg)")
+                    completion(.failure(NSError(domain: "TomTomTraffic", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
+                    return
+                }
             }
 
             guard let data = data else {
                 completion(.failure(NSError(domain: "TomTomTraffic", code: -2, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
                 return
+            }
+
+            // Debug: Print response preview
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("📦 Traffic Incidents response preview: \(jsonString.prefix(300))")
             }
 
             do {

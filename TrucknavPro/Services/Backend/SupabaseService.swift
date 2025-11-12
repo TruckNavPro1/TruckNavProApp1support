@@ -10,7 +10,7 @@ class SupabaseService {
 
     static let shared = SupabaseService()
 
-    private var client: SupabaseClient!
+    internal var client: SupabaseClient!
 
     // Current user
     var currentUser: User? {

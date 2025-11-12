@@ -83,7 +83,7 @@ class MapViewController: UIViewController {
     private var hereWeatherService: HEREWeatherService?  // Destination weather
 
     private var trafficUpdateTimer: Timer?
-    private var incidentAnnotationManager: PointAnnotationManager?
+    internal var incidentAnnotationManager: PointAnnotationManager?  // Internal for traffic extension
 
     // Hazard Warning System
     private var hazardMonitoringService: HazardMonitoringService?

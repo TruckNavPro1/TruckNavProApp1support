@@ -303,10 +303,36 @@ class PaywallViewController: UIViewController {
     }
 
     @objc private func termsTapped() {
-        // Open terms and privacy policy
-        if let url = URL(string: "https://yourapp.com/terms") {
-            UIApplication.shared.open(url)
+        // Show action sheet with options for Terms, Privacy, and EULA
+        let alert = UIAlertController(title: "Legal", message: "Choose a document to view", preferredStyle: .actionSheet)
+
+        alert.addAction(UIAlertAction(title: "Terms of Service", style: .default) { _ in
+            if let url = URL(string: "https://trucknavpro.com/terms") {
+                UIApplication.shared.open(url)
+            }
+        })
+
+        alert.addAction(UIAlertAction(title: "Privacy Policy", style: .default) { _ in
+            if let url = URL(string: "https://trucknavpro.com/privacy") {
+                UIApplication.shared.open(url)
+            }
+        })
+
+        alert.addAction(UIAlertAction(title: "EULA", style: .default) { _ in
+            if let url = URL(string: "https://trucknavpro.com/eula") {
+                UIApplication.shared.open(url)
+            }
+        })
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        // iPad popover configuration to prevent crash
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = termsButton
+            popover.sourceRect = termsButton.bounds
         }
+
+        present(alert, animated: true)
     }
 
     // MARK: - Helpers

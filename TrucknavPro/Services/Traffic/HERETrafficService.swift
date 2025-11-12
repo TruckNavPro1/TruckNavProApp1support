@@ -187,14 +187,23 @@ class HERETrafficService {
                         coord = CLLocationCoordinate2D(latitude: 0, longitude: 0)
                     }
 
+                    // Map criticality string to severity number
+                    let severity: Int
+                    switch result.incidentDetails.criticality?.lowercased() {
+                    case "critical": severity = 3
+                    case "major": severity = 2
+                    case "minor": severity = 1
+                    default: severity = 0
+                    }
+
                     return TrafficIncident(
                         id: result.incidentDetails.id,
-                        type: result.incidentDetails.type.joined(separator: ", "),
+                        type: result.incidentDetails.type,
                         description: result.incidentDetails.description.value,
                         coordinate: coord,
                         startTime: nil,  // HERE v7 uses different time format
                         endTime: nil,
-                        severity: result.incidentDetails.criticality?.id ?? 0,
+                        severity: severity,
                         delay: nil,
                         length: result.incidentDetails.length
                     )
@@ -256,19 +265,16 @@ struct HERETrafficIncidentsResponse: Codable {
 
         struct IncidentDetails: Codable {
             let id: String
-            let type: [String]
+            let type: String
+            let typeDescription: Description?
             let description: Description
-            let criticality: Criticality?
+            let summary: Description?
+            let criticality: String?
             let length: Int?
 
             struct Description: Codable {
                 let value: String
-                let lang: String?
-            }
-
-            struct Criticality: Codable {
-                let id: Int
-                let description: String?
+                let language: String?
             }
         }
 
