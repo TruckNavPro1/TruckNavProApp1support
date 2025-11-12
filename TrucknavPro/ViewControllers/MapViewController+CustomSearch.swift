@@ -149,20 +149,89 @@ extension MapViewController {
 
         print("🔍 Searching for: \(query) near \(userLocation.latitude), \(userLocation.longitude)")
 
-        // Use TomTom for text search with increased limit
-        tomTomSearchService?.searchText(query, near: userLocation, limit: 50) { [weak self] result in
+        // Try HERE first (primary)
+        if let hereService = hereSearchService {
+            print("🗺️ Using HERE Search (primary)...")
+            hereService.searchText(query, near: userLocation, limit: 50) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let hereResults):
+                        print("✅ HERE Search returned \(hereResults.count) results")
+                        // Convert HERE results to TomTom format for compatibility
+                        let results = hereResults.map { here in
+                            TomTomSearchService.TruckSearchResult(
+                                id: here.id,
+                                name: here.name,
+                                category: here.category,
+                                distance: here.distance,
+                                coordinate: here.coordinate,
+                                address: here.address,
+                                phone: here.phone,
+                                categories: here.categories
+                            )
+                        }
+
+                        if results.isEmpty {
+                            self?.showSearchAlert(title: "No Results", message: "No results found for '\(query)'. Try a different search term.")
+                        } else {
+                            self?.showSearchResults(results, userLocation: userLocation, query: query)
+                        }
+                    case .failure(let error):
+                        print("❌ HERE search failed: \(error.localizedDescription)")
+                        // Try TomTom as fallback
+                        self?.tryTomTomSearchFallback(query: query, userLocation: userLocation, hereError: error)
+                    }
+                }
+            }
+        } else {
+            // HERE not available, try TomTom directly
+            print("⚠️ HERE not available, trying TomTom Search...")
+            tryTomTomSearchFallback(query: query, userLocation: userLocation, hereError: nil)
+        }
+    }
+
+    private func tryTomTomSearchFallback(query: String, userLocation: CLLocationCoordinate2D, hereError: Error?) {
+        guard let tomTomService = tomTomSearchService else {
+            // Neither service available
+            let message = hereError != nil
+                ? "HERE Search failed and TomTom Search is not configured.\n\nHERE error: \(hereError!.localizedDescription)"
+                : "Search services not configured. Please add HEREAPIKey or TomTomAPIKey to Info.plist.\n\nGet keys at:\nhttps://developer.here.com/\nhttps://developer.tomtom.com/"
+            showSearchAlert(title: "Search Unavailable", message: message)
+            return
+        }
+
+        print("🗺️ Falling back to TomTom Search...")
+        tomTomService.searchText(query, near: userLocation, limit: 50) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let results):
-                    print("✅ TomTom text search returned \(results.count) results")
+                    print("✅ TomTom Search returned \(results.count) results")
+
                     if results.isEmpty {
                         self?.showSearchAlert(title: "No Results", message: "No results found for '\(query)'. Try a different search term.")
                     } else {
                         self?.showSearchResults(results, userLocation: userLocation, query: query)
                     }
+
                 case .failure(let error):
-                    print("❌ Search failed: \(error.localizedDescription)")
-                    self?.showSearchAlert(title: "Search Error", message: "Search failed. Please try again.")
+                    print("❌ TomTom Search also failed: \(error.localizedDescription)")
+
+                    // Both services failed - show comprehensive error
+                    let errorMessage: String
+                    if let urlError = error as? URLError {
+                        switch urlError.code {
+                        case .notConnectedToInternet:
+                            errorMessage = "No internet connection. Please check your network settings."
+                        case .timedOut:
+                            errorMessage = "Search timed out. Please try again."
+                        default:
+                            errorMessage = "Network error: \(urlError.localizedDescription)"
+                        }
+                    } else {
+                        errorMessage = "Both HERE and TomTom Search failed.\n\nHERE: \(hereError?.localizedDescription ?? "Not available")\nTomTom: \(error.localizedDescription)\n\nCheck API keys at:\nhttps://developer.here.com/\nhttps://developer.tomtom.com/"
+                    }
+
+                    self?.showSearchAlert(title: "Search Error", message: errorMessage)
                 }
             }
         }
@@ -177,9 +246,63 @@ extension MapViewController {
 
         print("📂 Searching category: \(category.rawValue) near \(userLocation.latitude), \(userLocation.longitude)")
 
-        // Use TomTom category search for accurate, truck-specific results
+        // Try HERE first (primary)
+        if let hereService = hereSearchService {
+            print("🗺️ Using HERE Category Search (primary)...")
+            let searchQuery = getCategorySearchQuery(for: category)
+
+            hereService.searchText(searchQuery, near: userLocation, limit: 50) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let hereResults):
+                        print("✅ HERE Category Search returned \(hereResults.count) results for \(category.rawValue)")
+                        // Convert HERE results to TomTom format for compatibility
+                        let results = hereResults.map { here in
+                            TomTomSearchService.TruckSearchResult(
+                                id: here.id,
+                                name: here.name,
+                                category: here.category,
+                                distance: here.distance,
+                                coordinate: here.coordinate,
+                                address: here.address,
+                                phone: here.phone,
+                                categories: here.categories
+                            )
+                        }
+
+                        if results.isEmpty {
+                            self?.showSearchAlert(title: "No Results", message: "No \(category.rawValue.lowercased()) found nearby. Try expanding your search area.")
+                        } else {
+                            self?.showSearchResults(results, userLocation: userLocation, category: category.rawValue)
+                        }
+                    case .failure(let error):
+                        print("❌ HERE category search failed: \(error.localizedDescription)")
+                        // Try TomTom as fallback
+                        self?.tryTomTomCategorySearchFallback(category: category, userLocation: userLocation, hereError: error)
+                    }
+                }
+            }
+        } else {
+            // HERE not available, try TomTom directly
+            print("⚠️ HERE not available, trying TomTom Category Search...")
+            tryTomTomCategorySearchFallback(category: category, userLocation: userLocation, hereError: nil)
+        }
+    }
+
+    private func tryTomTomCategorySearchFallback(category: TruckQuickCategory, userLocation: CLLocationCoordinate2D, hereError: Error?) {
+        guard let tomTomService = tomTomSearchService else {
+            // Neither service available
+            let message = hereError != nil
+                ? "HERE Search failed and TomTom Search is not configured.\n\nHERE error: \(hereError!.localizedDescription)"
+                : "Search services not configured. Please add HEREAPIKey or TomTomAPIKey to Info.plist.\n\nGet keys at:\nhttps://developer.here.com/\nhttps://developer.tomtom.com/"
+            showSearchAlert(title: "Search Unavailable", message: message)
+            return
+        }
+
+        print("🗺️ Falling back to TomTom Category Search for \(category.rawValue)...")
+
         let tomTomCategory = category.tomTomCategory
-        tomTomSearchService?.searchCategory(
+        tomTomService.searchCategory(
             tomTomCategory,
             near: userLocation,
             radius: 80000, // 80km radius for better coverage
@@ -188,17 +311,46 @@ extension MapViewController {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let results):
-                    print("✅ Category search returned \(results.count) results for \(category.rawValue)")
+                    print("✅ TomTom Category Search returned \(results.count) results for \(category.rawValue)")
+
                     if results.isEmpty {
                         self?.showSearchAlert(title: "No Results", message: "No \(category.rawValue.lowercased()) found nearby. Try expanding your search area.")
                     } else {
                         self?.showSearchResults(results, userLocation: userLocation, category: category.rawValue)
                     }
+
                 case .failure(let error):
-                    print("❌ Category search failed: \(error.localizedDescription)")
-                    self?.showSearchAlert(title: "Search Error", message: "Category search failed. Please try again.")
+                    print("❌ TomTom Category Search also failed: \(error.localizedDescription)")
+
+                    // Both services failed - show comprehensive error
+                    let errorMessage: String
+                    if let urlError = error as? URLError {
+                        switch urlError.code {
+                        case .notConnectedToInternet:
+                            errorMessage = "No internet connection. Please check your network settings."
+                        case .timedOut:
+                            errorMessage = "Search timed out. Please try again."
+                        default:
+                            errorMessage = "Network error: \(urlError.localizedDescription)"
+                        }
+                    } else {
+                        errorMessage = "Both HERE and TomTom Search failed.\n\nHERE: \(hereError?.localizedDescription ?? "Not available")\nTomTom: \(error.localizedDescription)\n\nCheck API keys at:\nhttps://developer.here.com/\nhttps://developer.tomtom.com/"
+                    }
+
+                    self?.showSearchAlert(title: "Search Error", message: errorMessage)
                 }
             }
+        }
+    }
+
+    private func getCategorySearchQuery(for category: TruckQuickCategory) -> String {
+        switch category {
+        case .truckStops: return "truck stop"
+        case .fuel: return "gas station"
+        case .restAreas: return "rest area"
+        case .weighStations: return "weigh station"
+        case .parking: return "truck parking"
+        case .restaurants: return "restaurant"
         }
     }
 

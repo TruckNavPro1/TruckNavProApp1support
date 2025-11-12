@@ -491,8 +491,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TrucknavPro/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "TruckNav Pro needs continuous location access to provide uninterrupted turn-by-turn navigation, track your route progress, and deliver real-time traffic alerts even when the app is in the background.";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "TruckNav Pro requires background location access to maintain accurate navigation guidance and provide timely traffic alerts throughout your entire journey.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "TruckNav Pro needs continuous access to your location to provide background turn-by-turn navigation, real-time traffic updates, and ETA notifications even when the app is not active.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "TruckNav Pro needs continuous access to your location to provide background turn-by-turn navigation and real-time updates.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "TruckNav Pro needs your location to show your position on the map and provide turn-by-turn navigation with truck-specific routing.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "TruckNav Pro requires your location to provide accurate truck-specific navigation, real-time traffic updates, and turn-by-turn directions while you're using the app.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -524,8 +525,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TrucknavPro/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "TruckNav Pro needs continuous location access to provide uninterrupted turn-by-turn navigation, track your route progress, and deliver real-time traffic alerts even when the app is in the background.";
-				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "TruckNav Pro requires background location access to maintain accurate navigation guidance and provide timely traffic alerts throughout your entire journey.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "TruckNav Pro needs continuous access to your location to provide background turn-by-turn navigation, real-time traffic updates, and ETA notifications even when the app is not active.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "TruckNav Pro needs continuous access to your location to provide background turn-by-turn navigation and real-time updates.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "TruckNav Pro needs your location to show your position on the map and provide turn-by-turn navigation with truck-specific routing.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "TruckNav Pro requires your location to provide accurate truck-specific navigation, real-time traffic updates, and turn-by-turn directions while you're using the app.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

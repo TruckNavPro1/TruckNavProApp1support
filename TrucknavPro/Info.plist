@@ -2,12 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TruckNav Pro needs your location to show your position on the map and provide turn-by-turn navigation with truck-specific routing.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>TruckNav Pro needs continuous access to your location to provide background turn-by-turn navigation, real-time traffic updates, and ETA notifications even when the app is not active.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>TruckNav Pro needs continuous access to your location to provide background turn-by-turn navigation and real-time updates.</string>
 	<key>LocationAccuracyAuthorizationDescription</key>
 	<string>TruckNav Pro needs precise location data to provide accurate turn-by-turn navigation, lane guidance, and truck-specific routing. Reduced accuracy may result in navigation errors.</string>
 	<key>MBXAccessToken</key>
@@ -22,6 +16,8 @@
 	<string>https://tsjaqhetnsnhqgnfhikn.supabase.co</string>
 	<key>TomTomAPIKey</key>
 	<string>Nq78WMNfPT4Xvm8jV7KiYGp6nb55VDkO</string>
+	<key>HEREAPIKey</key>
+	<string>cShfBqDH1mg-6vPdVI2t6S-Bp1l5_omUW2RMrSBywFM</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

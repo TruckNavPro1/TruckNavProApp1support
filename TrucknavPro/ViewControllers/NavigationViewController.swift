@@ -15,7 +15,7 @@ import AudioToolbox
 
 class MapViewController: UIViewController {
 
-    private var navigationMapView: NavigationMapView!
+    internal var navigationMapView: NavigationMapView!  // Internal for POI extension access
     let locationManager = CLLocationManager()
     private var cancelables = Set<AnyCancellable>()
     private var lastBearing: CLLocationDirection = 0
@@ -25,10 +25,22 @@ class MapViewController: UIViewController {
     private var mapboxNavigation: MapboxNavigation!
     private var currentNavigationViewController: NavigationViewController?
 
-    // Standard US Semi-Trailer Parameters (for Mapbox Directions API)
-    private let truckHeight: Measurement<UnitLength> = Measurement(value: 4.11, unit: .meters)  // 13'6"
-    private let truckWidth: Measurement<UnitLength> = Measurement(value: 2.44, unit: .meters)   // 8 ft
-    private let truckWeight: Measurement<UnitMass> = Measurement(value: 36.287, unit: .metricTons) // 80,000 lbs
+    // Standard US Semi-Trailer Parameters (Imperial Units)
+    private let truckHeightFeet: Double = 13.5  // 13'6" standard semi height
+    private let truckWidthFeet: Double = 8.5    // 8'6" standard semi width
+    private let truckWeightLbs: Int = 80000     // 80,000 lbs federal max
+    private let truckLengthFeet: Double = 70.0  // ~70 ft total (tractor + 53' trailer)
+
+    // Computed properties for Mapbox (requires Measurement types with metric)
+    private var truckHeight: Measurement<UnitLength> {
+        return Measurement(value: truckHeightFeet * 0.3048, unit: .meters)
+    }
+    private var truckWidth: Measurement<UnitLength> {
+        return Measurement(value: truckWidthFeet * 0.3048, unit: .meters)
+    }
+    private var truckWeight: Measurement<UnitMass> {
+        return Measurement(value: Double(truckWeightLbs) * 0.000453592, unit: .metricTons)
+    }
 
     // Navigation state
     private var isNavigating: Bool = false
@@ -61,8 +73,15 @@ class MapViewController: UIViewController {
 
     // TomTom Services
     private var tomTomRoutingService: TomTomRoutingService?
-    private var tomTomTrafficService: TomTomTrafficService?
+    internal var tomTomTrafficService: TomTomTrafficService?  // Internal for traffic widget access
     var tomTomSearchService: TomTomSearchService?  // Internal for custom search bar access
+
+    // HERE Services (Fallback)
+    var hereSearchService: HERESearchService?  // Internal for custom search bar fallback
+    internal var hereTrafficService: HERETrafficService?  // Internal for traffic widget fallback
+    private var hereRoutingService: HERERoutingService?  // Truck routing fallback
+    private var hereWeatherService: HEREWeatherService?  // Destination weather
+
     private var trafficUpdateTimer: Timer?
     private var incidentAnnotationManager: PointAnnotationManager?
 
@@ -104,6 +123,23 @@ class MapViewController: UIViewController {
         return button
     }()
 
+    // TEST BUTTON - Shows paywall for preview
+    lazy var testPaywallButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        button.setImage(UIImage(systemName: "dollarsign.circle.fill", withConfiguration: config), for: .normal)
+        button.backgroundColor = .systemBackground
+        button.tintColor = .systemGreen
+        button.layer.cornerRadius = 22
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(showTestPaywall), for: .touchUpInside)
+        return button
+    }()
+
     private let weatherWidget: WeatherWidgetView = {
         let widget = WeatherWidgetView()
         widget.translatesAutoresizingMaskIntoConstraints = false
@@ -119,16 +155,44 @@ class MapViewController: UIViewController {
         mapboxNavigation = navigationProvider.mapboxNavigation
 
         // Initialize TomTom Services if API key available
-        if let tomTomApiKey = Bundle.main.infoDictionary?["TomTomAPIKey"] as? String {
+        if let tomTomApiKey = Bundle.main.infoDictionary?["TomTomAPIKey"] as? String, !tomTomApiKey.isEmpty {
+            print("🔑 Found TomTom API key: \(tomTomApiKey.prefix(10))...")
+
             tomTomRoutingService = TomTomRoutingService(apiKey: tomTomApiKey)
             tomTomTrafficService = TomTomTrafficService(apiKey: tomTomApiKey)
             tomTomSearchService = TomTomSearchService(apiKey: tomTomApiKey)
             hazardMonitoringService = HazardMonitoringService(tomTomApiKey: tomTomApiKey)
             weatherOverlayService = WeatherOverlayService()
             setupHazardWarningCallbacks()
-            print("🚛 TomTom Services initialized (Routing, Traffic, Search, Hazard Monitoring, Weather Overlay)")
+
+            print("✅ TomTom Services initialized successfully:")
+            print("   - Routing: \(tomTomRoutingService != nil ? "✓" : "✗")")
+            print("   - Traffic: \(tomTomTrafficService != nil ? "✓" : "✗")")
+            print("   - Search: \(tomTomSearchService != nil ? "✓" : "✗")")
+            print("   - Hazard Monitoring: \(hazardMonitoringService != nil ? "✓" : "✗")")
         } else {
-            print("⚠️ TomTom API key not found - using Mapbox only")
+            print("⚠️ TomTom API key not found in Info.plist")
+            print("   Search will use Mapbox fallback")
+            print("   To enable TomTom: Add TomTomAPIKey to Info.plist")
+            print("   Get API key at: https://developer.tomtom.com/")
+        }
+
+        // Initialize HERE Services if API key available (fallback for search, traffic, routing, weather)
+        if let hereApiKey = Bundle.main.infoDictionary?["HEREAPIKey"] as? String, !hereApiKey.isEmpty {
+            print("🔑 Found HERE API key: \(hereApiKey.prefix(10))...")
+            hereSearchService = HERESearchService(apiKey: hereApiKey)
+            hereTrafficService = HERETrafficService(apiKey: hereApiKey)
+            hereRoutingService = HERERoutingService(apiKey: hereApiKey)
+            hereWeatherService = HEREWeatherService(apiKey: hereApiKey)
+            print("✅ HERE Services initialized (fallback enabled):")
+            print("   - Search: ✓")
+            print("   - Traffic: ✓")
+            print("   - Routing: ✓")
+            print("   - Weather: ✓")
+        } else {
+            print("ℹ️ HERE API key not found - fallback services disabled")
+            print("   To enable HERE fallback: Add HEREAPIKey to Info.plist")
+            print("   Get API key at: https://developer.here.com/")
         }
 
         setupLocationManager()
@@ -138,13 +202,17 @@ class MapViewController: UIViewController {
         setupRoutePreviewUI()
         setupRecenterButton()
         setupSettingsButton()
+        setupTestPaywallButton()  // TEST BUTTON
         setupWeatherWidget()
+        setupTrafficWidget()
         setupCustomSearchBar()  // Custom liquid glass search bar
 
         // Ensure proper z-ordering (bring controls to front)
         view.bringSubviewToFront(recenterButton)
         view.bringSubviewToFront(settingsButton)
+        view.bringSubviewToFront(testPaywallButton)  // TEST BUTTON
         view.bringSubviewToFront(weatherWidget)
+        view.bringSubviewToFront(trafficWidget)
         view.bringSubviewToFront(speedLimitView)
         view.bringSubviewToFront(roadNameLabel)
         view.bringSubviewToFront(routePreviewContainer)
@@ -181,7 +249,7 @@ class MapViewController: UIViewController {
         // Enable detailed annotations for navigation
         options.attributeOptions = [.speed, .distance, .expectedTravelTime, .congestionLevel]
 
-        print("🚛 Truck routing configured: \(truckHeight.value)m height, \(truckWidth.value)m width, \(truckWeight.value)t weight")
+        print("🚛 Mapbox truck routing configured: \(truckWeightLbs) lbs, \(truckHeightFeet)' height, \(truckWidthFeet)' width")
 
         return options
     }
@@ -228,6 +296,7 @@ class MapViewController: UIViewController {
             self?.enable3DBuildings()
             self?.enableTrafficLayer()
             self?.setupAnnotationManager()
+            self?.setupPOIManager()  // Initialize POI system
             self?.configureDayNightMode()
             self?.setInitialCameraPosition()
             self?.updateWeatherOverlay()
@@ -434,6 +503,17 @@ class MapViewController: UIViewController {
         ])
     }
 
+    private func setupTestPaywallButton() {
+        view.addSubview(testPaywallButton)
+
+        NSLayoutConstraint.activate([
+            testPaywallButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            testPaywallButton.topAnchor.constraint(equalTo: settingsButton.bottomAnchor, constant: 16),
+            testPaywallButton.widthAnchor.constraint(equalToConstant: 44),
+            testPaywallButton.heightAnchor.constraint(equalToConstant: 44)
+        ])
+    }
+
     private func setupWeatherWidget() {
         view.addSubview(weatherWidget)
 
@@ -450,13 +530,64 @@ class MapViewController: UIViewController {
     }
 
     private func fetchWeather(for coordinate: CLLocationCoordinate2D) {
-        WeatherService.shared.fetchWeather(for: coordinate) { [weak self] result in
-            switch result {
-            case .success(let weatherInfo):
-                self?.weatherWidget.configure(with: weatherInfo)
-                print("🌤️ Weather updated: \(weatherInfo.temperature)° \(weatherInfo.condition)")
-            case .failure(let error):
-                print("⚠️ Weather fetch failed: \(error.localizedDescription)")
+        print("🌡️ Attempting to fetch weather for location: \(coordinate.latitude), \(coordinate.longitude)")
+
+        // Use HERE Weather as primary (works in simulator, unlike WeatherKit)
+        if let hereWeather = hereWeatherService {
+            print("🌤️ Using HERE Weather (primary)...")
+            hereWeather.getCurrentWeather(at: coordinate) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let hereConditions):
+                        // Convert HERE weather to WeatherInfo format
+                        let weatherInfo = WeatherInfo(
+                            temperature: Int(hereConditions.temperature),
+                            high: Int(hereConditions.temperature + 5),  // Approximate high
+                            low: Int(hereConditions.temperature - 5),   // Approximate low
+                            condition: hereConditions.description,
+                            symbolName: hereConditions.condition.emoji,
+                            dayName: DateFormatter().weekdaySymbols[Calendar.current.component(.weekday, from: Date()) - 1]
+                        )
+                        self?.weatherWidget.configure(with: weatherInfo)
+                        print("🌤️ HERE Weather updated: \(Int(hereConditions.temperature))°F \(hereConditions.condition.rawValue)")
+
+                        // Display severe weather warnings
+                        if hereConditions.condition.isSevere {
+                            print("⚠️ SEVERE WEATHER: \(hereConditions.condition.rawValue)")
+                        }
+
+                    case .failure(let hereError):
+                        print("❌ HERE Weather failed: \(hereError.localizedDescription)")
+                        // Try WeatherKit as fallback
+                        print("🔄 Falling back to WeatherKit...")
+                        WeatherService.shared.fetchWeather(for: coordinate) { result in
+                            switch result {
+                            case .success(let weatherInfo):
+                                self?.weatherWidget.configure(with: weatherInfo)
+                                print("🌤️ WeatherKit updated: \(weatherInfo.temperature)° \(weatherInfo.condition)")
+                            case .failure(let error):
+                                print("❌ WeatherKit also failed: \(error.localizedDescription)")
+                                print("⚠️ All weather services unavailable")
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // HERE not available, try WeatherKit directly
+            print("⚠️ HERE Weather not available, trying WeatherKit...")
+            WeatherService.shared.fetchWeather(for: coordinate) { [weak self] result in
+                switch result {
+                case .success(let weatherInfo):
+                    self?.weatherWidget.configure(with: weatherInfo)
+                    print("🌤️ Weather updated: \(weatherInfo.temperature)° \(weatherInfo.condition)")
+                case .failure(let error):
+                    print("❌ Weather fetch failed: \(error.localizedDescription)")
+                    print("⚠️ WeatherKit requires:")
+                    print("   1. Valid Apple Developer account with WeatherKit enabled")
+                    print("   2. App properly signed with provisioning profile")
+                    print("   3. May not work in simulator - try physical device")
+                }
             }
         }
     }
@@ -471,6 +602,13 @@ class MapViewController: UIViewController {
         }
         present(settingsVC, animated: true)
         print("⚙️ Opening settings")
+    }
+
+    @objc private func showTestPaywall() {
+        let paywallVC = PaywallViewController()
+        paywallVC.modalPresentationStyle = .pageSheet
+        present(paywallVC, animated: true)
+        print("💰 Showing paywall for preview")
     }
 
     // MARK: - Free-Drive Mode UI
@@ -609,18 +747,22 @@ class MapViewController: UIViewController {
     // MARK: - Traffic Updates
 
     private func startTrafficUpdates() {
-        guard tomTomTrafficService != nil else { return }
+        // Require at least one traffic service (TomTom or HERE)
+        guard tomTomTrafficService != nil || hereTrafficService != nil else {
+            print("⚠️ No traffic services available")
+            return
+        }
 
         // Update immediately
         updateTrafficIncidents()
 
-        // Then update every 60 seconds
+        // Then update every 5 minutes (300 seconds) for efficiency
         trafficUpdateTimer?.invalidate()
-        trafficUpdateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        trafficUpdateTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.updateTrafficIncidents()
         }
 
-        print("🚦 Traffic updates started (60s interval)")
+        print("🚦 Traffic updates started (5 minute interval)")
     }
 
     private func stopTrafficUpdates() {
@@ -631,8 +773,6 @@ class MapViewController: UIViewController {
     }
 
     private func updateTrafficIncidents() {
-        guard let trafficService = tomTomTrafficService else { return }
-
         // Get visible region bounds
         let visibleCoordinates = navigationMapView.mapView.mapboxMap.coordinateBounds(for: navigationMapView.mapView.bounds)
 
@@ -643,13 +783,73 @@ class MapViewController: UIViewController {
             maxLon: visibleCoordinates.northeast.longitude
         )
 
-        trafficService.getTrafficIncidents(in: boundingBox) { [weak self] result in
+        // Try HERE first (primary)
+        if let hereService = hereTrafficService {
+            print("🚦 Using HERE Traffic (primary)...")
+            hereService.getTrafficIncidents(in: boundingBox) { [weak self] result in
+                guard let self = self else { return }
+
+                switch result {
+                case .success(let hereIncidents):
+                    print("✅ HERE Traffic: Found \(hereIncidents.count) incidents")
+
+                    // Convert HERE incidents to TomTom format for compatibility
+                    let tomTomIncidents = hereIncidents.map { hereIncident -> TomTomTrafficService.TrafficIncident in
+                        let severityString: String
+                        if hereIncident.severity >= 8 {
+                            severityString = "Severe"
+                        } else if hereIncident.severity >= 5 {
+                            severityString = "High"
+                        } else if hereIncident.severity >= 3 {
+                            severityString = "Medium"
+                        } else {
+                            severityString = "Minor"
+                        }
+
+                        return TomTomTrafficService.TrafficIncident(
+                            id: hereIncident.id,
+                            type: 1,
+                            severity: severityString,
+                            coordinate: hereIncident.coordinate,
+                            description: hereIncident.description
+                        )
+                    }
+
+                    DispatchQueue.main.async {
+                        self.displayTrafficIncidents(tomTomIncidents)
+                    }
+
+                case .failure(let error):
+                    print("❌ HERE Traffic failed: \(error.localizedDescription)")
+                    // Try TomTom as fallback
+                    self.tryTomTomTrafficFallback(boundingBox: boundingBox)
+                }
+            }
+        } else {
+            // HERE not available, try TomTom directly
+            print("⚠️ HERE not available, trying TomTom Traffic...")
+            tryTomTomTrafficFallback(boundingBox: boundingBox)
+        }
+    }
+
+    private func tryTomTomTrafficFallback(boundingBox: (minLat: Double, minLon: Double, maxLat: Double, maxLon: Double)) {
+        guard let tomTomService = tomTomTrafficService else {
+            print("⚠️ No traffic services available")
+            return
+        }
+
+        print("🚦 Falling back to TomTom Traffic...")
+
+        tomTomService.getTrafficIncidents(in: boundingBox) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let incidents):
+                    print("✅ TomTom Traffic: \(incidents.count) incidents")
                     self?.displayTrafficIncidents(incidents)
+
                 case .failure(let error):
-                    print("⚠️ Traffic incidents fetch failed: \(error.localizedDescription)")
+                    print("❌ TomTom Traffic also failed: \(error.localizedDescription)")
+                    print("⚠️ No traffic data available from any service")
                 }
             }
         }
@@ -1094,9 +1294,12 @@ class MapViewController: UIViewController {
         // Calculate distance to determine routing strategy
         let distance = userLocation.distance(to: destination)
 
-        // Strategy: Use TomTom for long routes (>50km) or if available, otherwise Mapbox
-        if let tomTomService = tomTomRoutingService, distance > 50000 {
-            print("🚛 Using TomTom Routing API for long-distance truck route (\(Int(distance/1000))km)")
+        // Strategy: Use HERE for truck routes (primary), fallback to TomTom, then Mapbox
+        if let hereService = hereRoutingService {
+            print("🚛 Using HERE Routing API for truck route (\(Int(distance/1000))km)")
+            calculateHERERoute(from: userLocation, to: destination, using: hereService)
+        } else if let tomTomService = tomTomRoutingService {
+            print("🚛 Using TomTom Routing API for truck route (\(Int(distance/1000))km)")
             calculateTomTomRoute(from: userLocation, to: destination, using: tomTomService)
         } else {
             print("🚛 Using Mapbox Routing API")
@@ -1111,13 +1314,17 @@ class MapViewController: UIViewController {
         to destination: CLLocationCoordinate2D,
         using service: TomTomRoutingService
     ) {
-        // Build truck parameters from settings
-        var truckParams = TruckParameters()
-        truckParams.height = truckHeight.value
-        truckParams.width = truckWidth.value
-        truckParams.weight = Int(truckWeight.value * 1000) // Convert metric tons to kg
-        truckParams.commercialVehicle = true
+        // Use standard US semi-truck configuration (Imperial units)
+        var truckParams = TruckParameters.standardSemiTruck
+
+        // Override with custom values if needed (using Imperial units)
+        truckParams.heightFeet = truckHeightFeet    // 13.5 ft (13'6")
+        truckParams.widthFeet = truckWidthFeet      // 8.5 ft (8'6")
+        truckParams.weightLbs = truckWeightLbs      // 80,000 lbs
+        truckParams.lengthFeet = truckLengthFeet    // 70 ft total
         truckParams.avoidUnpavedRoads = true
+
+        print("🚛 TomTom routing with: \(truckWeightLbs) lbs, \(truckHeightFeet)' height, \(truckWidthFeet)' width")
 
         // Calculate route with TomTom
         service.calculateRoute(
@@ -1159,6 +1366,110 @@ class MapViewController: UIViewController {
         // TomTom route is validated and available, but we'll use Mapbox navigation system
         print("🔄 Using Mapbox for turn-by-turn navigation (TomTom route validated)")
         calculateMapboxRoute(from: origin, to: destination)
+    }
+
+    // MARK: - HERE Routing
+
+    private func calculateHERERoute(
+        from origin: CLLocationCoordinate2D,
+        to destination: CLLocationCoordinate2D,
+        using service: HERERoutingService
+    ) {
+        // Convert truck parameters to HERE format (Imperial to Metric)
+        let truckParams = HERERoutingService.TruckParameters.fromImperial(
+            weightLbs: Double(truckWeightLbs),
+            heightFt: truckHeightFeet,
+            widthFt: truckWidthFeet,
+            lengthFt: truckLengthFeet
+        )
+
+        print("🚛 HERE routing with: \(truckWeightLbs) lbs, \(truckHeightFeet)' height, \(truckWidthFeet)' width")
+
+        // Calculate route with HERE
+        service.calculateRoute(
+            from: origin,
+            to: destination,
+            truckParams: truckParams,
+            avoidTolls: false
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let hereRoute):
+                    let distanceMiles = hereRoute.totalDistance * 0.000621371
+                    let durationMinutes = hereRoute.totalDuration / 60
+                    print("✅ HERE route: \(String(format: "%.1f mi", distanceMiles)), \(String(format: "%.0f", durationMinutes)) min")
+
+                    // Display toll costs if available
+                    if let tolls = hereRoute.tollCosts {
+                        print("💰 Toll costs: \(tolls.currency) \(String(format: "%.2f", tolls.total))")
+                        for detail in tolls.details {
+                            print("   - \(detail.name): \(String(format: "%.2f", detail.cost))")
+                        }
+                    }
+
+                    // Display HERE route info and use Mapbox for navigation
+                    self?.displayHERERouteAndUseMapboxForNavigation(hereRoute, from: origin, to: destination)
+
+                case .failure(let error):
+                    print("❌ HERE routing failed: \(error.localizedDescription)")
+
+                    // Try TomTom before falling back to Mapbox
+                    if let tomTomService = self?.tomTomRoutingService {
+                        print("🔄 Trying TomTom Routing API...")
+                        self?.calculateTomTomRoute(from: origin, to: destination, using: tomTomService)
+                    } else {
+                        print("🔄 Final fallback to Mapbox routing")
+                        self?.calculateMapboxRoute(from: origin, to: destination)
+                    }
+                }
+            }
+        }
+    }
+
+    private func displayHERERouteAndUseMapboxForNavigation(
+        _ hereRoute: HERERoutingService.HERERoute,
+        from origin: CLLocationCoordinate2D,
+        to destination: CLLocationCoordinate2D
+    ) {
+        // For now, use Mapbox for actual navigation since NavigationViewController requires NavigationRoutes
+        // HERE route is validated and available with toll costs
+        print("🔄 Using Mapbox for turn-by-turn navigation (HERE route validated)")
+
+        // Could display toll costs in UI before starting navigation
+        if let tolls = hereRoute.tollCosts {
+            let alert = UIAlertController(
+                title: "Route Toll Costs",
+                message: "This route has tolls totaling \(tolls.currency) \(String(format: "%.2f", tolls.total))\n\nProceed with navigation?",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
+                self?.calculateMapboxRoute(from: origin, to: destination)
+            })
+            alert.addAction(UIAlertAction(title: "Avoid Tolls", style: .cancel) { [weak self] _ in
+                // Recalculate without tolls
+                if let service = self?.hereRoutingService {
+                    let truckParams = HERERoutingService.TruckParameters.fromImperial(
+                        weightLbs: Double(self?.truckWeightLbs ?? 80000),
+                        heightFt: self?.truckHeightFeet ?? 13.5,
+                        widthFt: self?.truckWidthFeet ?? 8.5
+                    )
+                    service.calculateRoute(from: origin, to: destination, truckParams: truckParams, avoidTolls: true) { result in
+                        DispatchQueue.main.async {
+                            switch result {
+                            case .success(let newRoute):
+                                print("✅ HERE toll-free route: \(String(format: "%.1f mi", newRoute.totalDistance * 0.000621371))")
+                                self?.calculateMapboxRoute(from: origin, to: destination)
+                            case .failure:
+                                self?.calculateMapboxRoute(from: origin, to: destination)
+                            }
+                        }
+                    }
+                }
+            })
+            present(alert, animated: true)
+        } else {
+            calculateMapboxRoute(from: origin, to: destination)
+        }
     }
 
     // MARK: - Mapbox Routing
