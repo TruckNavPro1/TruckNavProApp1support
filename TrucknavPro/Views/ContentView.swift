@@ -29,7 +29,7 @@ struct ContentView: View {
                 }
             } else {
                 // Login screen - authentication REQUIRED
-                LoginViewControllerRepresentable()
+                LoginView()
                     .ignoresSafeArea()
             }
         }
@@ -57,25 +57,6 @@ struct LoadingView: View {
                     .padding(.top, 20)
             }
         }
-    }
-}
-
-// MARK: - Login Representable
-
-struct LoginViewControllerRepresentable: UIViewControllerRepresentable {
-
-    func makeUIViewController(context: Context) -> LoginViewController {
-        let loginVC = LoginViewController()
-
-        loginVC.onAuthenticationSuccess = {
-            // User authenticated - ContentView will automatically update
-            print("✅ User authenticated - transitioning to welcome")
-        }
-
-        return loginVC
-    }
-
-    func updateUIViewController(_ uiViewController: LoginViewController, context: Context) {
     }
 }
 
