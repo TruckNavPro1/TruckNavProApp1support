@@ -6,11 +6,110 @@
 import SwiftUI
 
 struct ContentView: View {
+
+    @StateObject private var authManager = AuthManager.shared
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+
     var body: some View {
-        NavigationViewControllerRepresentable()
-            .ignoresSafeArea()
+        Group {
+            if authManager.isLoading {
+                // Loading screen
+                LoadingView()
+            } else if authManager.isAuthenticated {
+                if hasSeenWelcome {
+                    // Main app - already authenticated and seen welcome
+                    NavigationViewControllerRepresentable()
+                        .ignoresSafeArea()
+                } else {
+                    // Show welcome screen after authentication
+                    WelcomeViewControllerRepresentable(onComplete: {
+                        hasSeenWelcome = true
+                    })
+                    .ignoresSafeArea()
+                }
+            } else {
+                // Login screen - not authenticated
+                LoginViewControllerRepresentable()
+                    .ignoresSafeArea()
+            }
+        }
     }
 }
+
+// MARK: - Loading View
+
+struct LoadingView: View {
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                Image(systemName: "truck.box.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(.orange)
+
+                Text("TruckNav Pro")
+                    .font(.system(size: 28, weight: .bold))
+
+                ProgressView()
+                    .scaleEffect(x: 1.5, y: 1.5)
+                    .padding(.top, 20)
+            }
+        }
+    }
+}
+
+// MARK: - Login Representable
+
+struct LoginViewControllerRepresentable: UIViewControllerRepresentable {
+
+    func makeUIViewController(context: Context) -> LoginViewController {
+        let loginVC = LoginViewController()
+
+        loginVC.onAuthenticationSuccess = {
+            // User authenticated - ContentView will automatically update
+            print("✅ User authenticated - transitioning to welcome")
+        }
+
+        loginVC.onSkipAuthentication = {
+            // User skipped login - go directly to app
+            Task {
+                await MainActor.run {
+                    // Force set hasSeenWelcome to true so app shows map
+                    UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
+                }
+            }
+        }
+
+        return loginVC
+    }
+
+    func updateUIViewController(_ uiViewController: LoginViewController, context: Context) {
+    }
+}
+
+// MARK: - Welcome Representable
+
+struct WelcomeViewControllerRepresentable: UIViewControllerRepresentable {
+
+    let onComplete: () -> Void
+
+    func makeUIViewController(context: Context) -> WelcomeViewController {
+        let welcomeVC = WelcomeViewController()
+
+        welcomeVC.onGetStarted = {
+            onComplete()
+        }
+
+        return welcomeVC
+    }
+
+    func updateUIViewController(_ uiViewController: WelcomeViewController, context: Context) {
+    }
+}
+
+// MARK: - Navigation Representable
 
 struct NavigationViewControllerRepresentable: UIViewControllerRepresentable {
 

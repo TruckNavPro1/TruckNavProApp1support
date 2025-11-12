@@ -19,6 +19,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
     private let tableView = UITableView(frame: .zero, style: .insetGrouped)
 
     private enum SettingsSection: Int, CaseIterable {
+        case account
         case subscription
         case truck
         case navigation
@@ -29,6 +30,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
 
         var title: String {
             switch self {
+            case .account: return "Account"
             case .subscription: return "Subscription"
             case .truck: return "Truck Settings"
             case .navigation: return "Navigation"
@@ -87,6 +89,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         guard let settingsSection = SettingsSection(rawValue: section) else { return 0 }
 
         switch settingsSection {
+        case .account: return 2  // Email + Sign Out
         case .subscription: return 2
         case .truck: return 3
         case .navigation: return 4
@@ -107,6 +110,8 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         }
 
         switch section {
+        case .account:
+            return configureAccountCell(for: indexPath)
         case .subscription:
             return configureSubscriptionCell(for: indexPath)
         case .truck:
@@ -125,6 +130,37 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
     }
 
     // MARK: - Cell Configuration
+
+    private func configureAccountCell(for indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "SettingCell", for: indexPath)
+
+        switch indexPath.row {
+        case 0:
+            // Show user email or "Not signed in"
+            cell.textLabel?.text = AuthManager.shared.getUserEmail() ?? "Not signed in"
+            cell.textLabel?.textColor = .label
+            cell.textLabel?.font = .systemFont(ofSize: 17, weight: .medium)
+            cell.accessoryType = .none
+            cell.selectionStyle = .none
+        case 1:
+            // Sign out button
+            if AuthManager.shared.isAuthenticated {
+                cell.textLabel?.text = "Sign Out"
+                cell.textLabel?.textColor = .systemRed
+                cell.textLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+                cell.accessoryType = .none
+            } else {
+                cell.textLabel?.text = "Sign In"
+                cell.textLabel?.textColor = .systemBlue
+                cell.textLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+                cell.accessoryType = .disclosureIndicator
+            }
+        default:
+            break
+        }
+
+        return cell
+    }
 
     private func configureSubscriptionCell(for indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "SettingCell", for: indexPath)
@@ -316,6 +352,8 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         guard let section = SettingsSection(rawValue: indexPath.section) else { return }
 
         switch section {
+        case .account:
+            handleAccountSetting(at: indexPath.row)
         case .subscription:
             handleSubscriptionSetting(at: indexPath.row)
         case .truck:
@@ -331,6 +369,63 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             handleSearchSetting(at: indexPath.row)
         case .system:
             handleSystemSetting(at: indexPath.row)
+        }
+    }
+
+    private func handleAccountSetting(at row: Int) {
+        switch row {
+        case 0:
+            // Email cell - no action
+            break
+        case 1:
+            // Sign out / Sign in
+            if AuthManager.shared.isAuthenticated {
+                // Show sign out confirmation
+                let alert = UIAlertController(
+                    title: "Sign Out",
+                    message: "Are you sure you want to sign out?",
+                    preferredStyle: .alert
+                )
+
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                alert.addAction(UIAlertAction(title: "Sign Out", style: .destructive) { [weak self] _ in
+                    self?.performSignOut()
+                })
+
+                present(alert, animated: true)
+            } else {
+                // Not authenticated - should show login (but skip is available, so user can be here)
+                print("ℹ️ User not signed in")
+            }
+        default:
+            break
+        }
+    }
+
+    private func performSignOut() {
+        Task {
+            do {
+                try await AuthManager.shared.signOut()
+
+                await MainActor.run {
+                    // Reset welcome screen flag so they see it again on next login
+                    UserDefaults.standard.removeObject(forKey: "hasSeenWelcome")
+
+                    // Reload settings to update UI
+                    tableView.reloadData()
+
+                    // Show success message
+                    showSuccessAlert("Successfully signed out")
+
+                    print("✅ User signed out successfully")
+                }
+            } catch {
+                await MainActor.run {
+                    showErrorAlert("Failed to sign out: \(error.localizedDescription)")
+                }
+
+                print("❌ Sign out failed: \(error.localizedDescription)")
+            }
         }
     }
 
