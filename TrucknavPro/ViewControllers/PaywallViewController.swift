@@ -9,6 +9,7 @@ import RevenueCat
 class PaywallViewController: UIViewController {
 
     var requiredFeature: Feature?
+    var onComplete: (() -> Void)?
     private var offerings: Offerings?
 
     // MARK: - UI Components
@@ -278,7 +279,9 @@ class PaywallViewController: UIViewController {
     // MARK: - Actions
 
     @objc private func closeTapped() {
-        dismiss(animated: true)
+        dismiss(animated: true) {
+            self.onComplete?()
+        }
     }
 
     @objc private func subscribeTapped(_ sender: UIButton) {
@@ -295,7 +298,9 @@ class PaywallViewController: UIViewController {
                 if !result.userCancelled {
                     await MainActor.run {
                         showSuccess("Subscription activated!")
-                        dismiss(animated: true)
+                        dismiss(animated: true) {
+                            self.onComplete?()
+                        }
                     }
                 }
             } catch {
@@ -317,7 +322,9 @@ class PaywallViewController: UIViewController {
                 _ = try await RevenueCatService.shared.restorePurchases()
                 await MainActor.run {
                     showSuccess("Purchases restored!")
-                    dismiss(animated: true)
+                    dismiss(animated: true) {
+                        self.onComplete?()
+                    }
                 }
             } catch {
                 await MainActor.run {

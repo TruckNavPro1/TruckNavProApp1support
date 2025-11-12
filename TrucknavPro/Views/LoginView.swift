@@ -95,26 +95,32 @@ struct LoginView: View {
                 .padding(.top, 10)
                 .disabled(isLoading)
 
-                // MARK: - Links
-                HStack {
-                    Button("Create Account") {
-                        signUp()
-                    }
-                    .foregroundColor(.white.opacity(0.9))
-                    .font(.footnote)
-                    .disabled(isLoading)
-
-                    Spacer()
-
-                    Button("Forgot Password?") {
-                        showForgotPassword()
-                    }
-                    .foregroundColor(.white.opacity(0.9))
-                    .font(.footnote)
-                    .disabled(isLoading)
+                // MARK: - Create Account Button
+                Button(action: signUp) {
+                    Text("Create Account")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
                 }
+                .background(Color.white.opacity(0.2))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.white.opacity(0.6), lineWidth: 2)
+                )
+                .cornerRadius(14)
                 .padding(.horizontal, 30)
-                .padding(.top, 8)
+                .padding(.top, 12)
+                .disabled(isLoading)
+
+                // MARK: - Forgot Password Link
+                Button("Forgot Password?") {
+                    showForgotPassword()
+                }
+                .foregroundColor(.white.opacity(0.9))
+                .font(.footnote)
+                .padding(.top, 16)
+                .disabled(isLoading)
 
                 Spacer()
 

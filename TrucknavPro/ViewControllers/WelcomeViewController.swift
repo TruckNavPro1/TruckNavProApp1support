@@ -212,6 +212,48 @@ class WelcomeViewController: UIViewController {
     // MARK: - Actions
 
     @objc private func getStartedTapped() {
-        onGetStarted?()
+        // Check subscription status before continuing
+        checkSubscriptionAndProceed()
+    }
+
+    private func checkSubscriptionAndProceed() {
+        Task {
+            do {
+                _ = try await RevenueCatService.shared.getCustomerInfo()
+                let hasActiveSubscription = RevenueCatService.shared.currentTier.isPro
+
+                await MainActor.run {
+                    if hasActiveSubscription {
+                        // User has active subscription - proceed to app
+                        print("✅ User has active subscription (\(RevenueCatService.shared.currentTier.displayName)), proceeding to app")
+                        onGetStarted?()
+                    } else {
+                        // No subscription - show paywall
+                        print("⭐ No active subscription (tier: \(RevenueCatService.shared.currentTier.displayName)), showing paywall")
+                        showPaywall()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    print("⚠️ Error checking subscription: \(error.localizedDescription)")
+                    // Show paywall on error to be safe
+                    showPaywall()
+                }
+            }
+        }
+    }
+
+    private func showPaywall() {
+        let paywall = PaywallViewController()
+
+        // When user completes purchase or closes paywall, proceed to app
+        paywall.onComplete = { [weak self] in
+            self?.onGetStarted?()
+        }
+
+        let navController = UINavigationController(rootViewController: paywall)
+        navController.modalPresentationStyle = .fullScreen
+        navController.isModalInPresentation = true // Prevent swipe to dismiss
+        present(navController, animated: true)
     }
 }
