@@ -1,15 +1,15 @@
 # Privacy Policy for TruckNav Pro
 
-**Last Updated:** January 9, 2025
-**Effective Date:** January 9, 2025
+**Last Updated:** January 12, 2025
+**Effective Date:** January 12, 2025
 
 ---
 
 ## 1. Introduction
 
-Welcome to TruckNav Pro ("we," "our," "us," or the "App"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application.
+Welcome to TruckNav Pro (the "App"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application. The developer(s) of this App choose to remain anonymous, and all support is provided through GitHub.
 
-**BY USING TRUCKNAV PRO, YOU VOLUNTARILY CONSENT TO THIS PRIVACY POLICY AND OUR TERMS OF SERVICE. IF YOU DO NOT AGREE WITH THE TERMS OF THIS PRIVACY POLICY, PLEASE DO NOT USE THE APP.**
+**BY USING TRUCKNAV PRO, YOU VOLUNTARILY CONSENT TO THIS PRIVACY POLICY AND OUR [TERMS OF SERVICE](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md). IF YOU DO NOT AGREE WITH THE TERMS OF THIS PRIVACY POLICY, PLEASE DO NOT USE THE APP.**
 
 Your use of TruckNav Pro is entirely voluntary and at your own discretion. We are committed to transparency about our data practices so you can make informed decisions about using our services.
 
@@ -317,17 +317,14 @@ For users in the EEA, we rely on Standard Contractual Clauses for data transfers
 
 ## 11. Contact Us
 
-If you have questions, concerns, or requests regarding this Privacy Policy or your personal data, please contact us:
+The developer(s) of this App choose to remain anonymous. If you have questions, concerns, or requests regarding this Privacy Policy or your personal data, please contact us through:
 
-**Email:** support@trucknavpro.com
 **GitHub Issues:** https://github.com/derrickgray494-rgb/TruckProNav/issues
-**Mailing Address:**
-TruckNav Pro
-[Your Company Address]
-[City, State, ZIP]
-United States
+**Support Documentation:** [SUPPORT.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/SUPPORT.md)
+**Terms of Service:** [TERMS_OF_SERVICE.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md)
+**EULA:** [EULA.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/EULA.md)
 
-**Response Time:** We aim to respond to privacy inquiries within 7-14 business days.
+**Response Time:** We aim to respond to privacy inquiries within 14 business days through GitHub Issues.
 
 ---
 
@@ -335,16 +332,16 @@ United States
 
 To delete your account and all associated data:
 
-1. **In-App Method:**
+1. **In-App Method (Preferred):**
    - Open TruckNav Pro
    - Go to Settings → Account
    - Select "Delete Account"
    - Confirm deletion
 
-2. **Email Request:**
-   - Send an email to support@trucknavpro.com
-   - Include your registered email and user ID
-   - Subject line: "Account Deletion Request"
+2. **GitHub Request:**
+   - Create an issue at [TruckProNav Issues](https://github.com/derrickgray494-rgb/TruckProNav/issues)
+   - Title: "Account Deletion Request"
+   - Include your registered email or user ID (do NOT include passwords)
    - Allow up to 30 days for complete deletion
 
 **What Gets Deleted:**
@@ -375,12 +372,16 @@ By using TruckNav Pro, you acknowledge that:
 
 ---
 
-## 14. Applicable Law
+## 14. Applicable Law and Anonymous Developer
 
-This Privacy Policy is governed by the laws of the United States and the state of [Your State], without regard to conflict of law principles.
+This Privacy Policy is governed by the laws of the United States, without regard to conflict of law principles.
+
+**Anonymous Developer Notice:**
+The developer(s) of this App choose to remain anonymous. All support, inquiries, and legal communications must be directed through the official GitHub repository.
 
 Any disputes arising from this policy shall be resolved through:
-1. Good faith negotiation
+
+1. Good faith negotiation via GitHub Issues
 2. Mediation (if necessary)
 3. Binding arbitration (if required)
 

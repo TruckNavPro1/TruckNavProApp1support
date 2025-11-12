@@ -13,7 +13,7 @@ class TrafficWidgetView: UIView {
     // MARK: - Properties
 
     private var updateTimer: Timer?
-    private let updateInterval: TimeInterval = 300  // Update every 5 minutes
+    private let updateInterval: TimeInterval = 180  // Update every 3 minutes
     private var lastTrafficData: (level: TrafficCongestionLevel, currentSpeed: Int, freeFlowSpeed: Int, incidents: [String])?
 
     // Store location and services for manual refresh
@@ -119,18 +119,46 @@ class TrafficWidgetView: UIView {
     }
 
     @objc private func handleTap() {
-        // Trigger manual refresh when user taps widget
-        manualRefresh()
-    }
+        // Show full traffic details when user taps widget
+        guard let data = lastTrafficData else { return }
 
-    private func manualRefresh() {
-        guard let location = lastLocation else {
-            print("⚠️ Cannot refresh: location not available")
-            return
+        let (level, _, _, incidents) = data
+
+        var message = """
+        Traffic Status: \(level.display.status)
+
+        """
+
+        if !incidents.isEmpty {
+            message += "⚠️ Road Warnings:\n\n"
+            for (index, incident) in incidents.enumerated() {
+                message += "\(index + 1). \(incident)\n\n"
+            }
+        } else {
+            message += "✅ No traffic incidents in your area."
         }
 
-        print("🔄 Manual traffic refresh triggered by user")
-        fetchTrafficData(location: location, hereService: hereService, tomTomService: tomTomService)
+        // Find the view controller to present the alert
+        if let viewController = findViewController() {
+            let alert = UIAlertController(
+                title: "Traffic & Road Conditions",
+                message: message,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            viewController.present(alert, animated: true)
+        }
+    }
+
+    private func findViewController() -> UIViewController? {
+        var responder: UIResponder? = self
+        while let nextResponder = responder?.next {
+            if let viewController = nextResponder as? UIViewController {
+                return viewController
+            }
+            responder = nextResponder
+        }
+        return nil
     }
 
     private func setupView() {
@@ -188,16 +216,8 @@ class TrafficWidgetView: UIView {
         statusIcon.image = UIImage(systemName: icon)
         statusIcon.tintColor = color
 
-        // Speed info with clear labels
-        if currentSpeed > 0 {
-            if congestionLevel == .freeFlow {
-                speedLabel.text = "Traffic flowing at \(currentSpeed) mph"
-            } else {
-                speedLabel.text = "Current: \(currentSpeed) mph\nNormal: \(freeFlowSpeed) mph"
-            }
-        } else {
-            speedLabel.text = "Speed data unavailable"
-        }
+        // Hide speed info (data from HERE API is inaccurate)
+        speedLabel.isHidden = true
 
         // Incident info - show actual incident description
         if !nearbyIncidents.isEmpty {

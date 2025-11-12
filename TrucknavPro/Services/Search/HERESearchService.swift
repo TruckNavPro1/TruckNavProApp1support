@@ -122,6 +122,9 @@ class HERESearchService {
                     let itemLocation = CLLocation(latitude: item.position.lat, longitude: item.position.lng)
                     let distance = item.distance ?? userLocation.distance(from: itemLocation)
 
+                    // Safely extract phone number with nil-safe optional chaining
+                    let phoneNumber = item.contacts?.first?.phone?.first?.value
+
                     return HERESearchResult(
                         id: item.id,
                         name: item.title,
@@ -129,7 +132,7 @@ class HERESearchService {
                         distance: distance,
                         coordinate: itemCoordinate,
                         address: item.address?.label ?? "Unknown",
-                        phone: item.contacts?.first?.phone?.first?.value,
+                        phone: phoneNumber,
                         categories: item.categories?.map { $0.name } ?? []
                     )
                 }

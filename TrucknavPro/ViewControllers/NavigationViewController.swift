@@ -26,9 +26,9 @@ class MapViewController: UIViewController {
     private var currentNavigationViewController: NavigationViewController?
 
     // Standard US Semi-Trailer Parameters (Imperial Units)
-    private let truckHeightFeet: Double = 13.5  // 13'6" standard semi height
-    private let truckWidthFeet: Double = 8.5    // 8'6" standard semi width
-    private let truckWeightLbs: Int = 80000     // 80,000 lbs federal max
+    internal let truckHeightFeet: Double = 13.5  // 13'6" standard semi height
+    internal let truckWidthFeet: Double = 8.5    // 8'6" standard semi width
+    internal let truckWeightLbs: Int = 80000     // 80,000 lbs federal max
     private let truckLengthFeet: Double = 70.0  // ~70 ft total (tractor + 53' trailer)
 
     // Computed properties for Mapbox (requires Measurement types with metric)
@@ -79,11 +79,19 @@ class MapViewController: UIViewController {
     // HERE Services (Fallback)
     var hereSearchService: HERESearchService?  // Internal for custom search bar fallback
     internal var hereTrafficService: HERETrafficService?  // Internal for traffic widget fallback
-    private var hereRoutingService: HERERoutingService?  // Truck routing fallback
+    internal var hereRoutingService: HERERoutingService?  // Internal for multi-stop routing access
     private var hereWeatherService: HEREWeatherService?  // Destination weather
 
     private var trafficUpdateTimer: Timer?
     internal var incidentAnnotationManager: PointAnnotationManager?  // Internal for traffic extension
+
+    // Waypoint & Multi-Stop Routing
+    internal var waypointService: HEREWaypointService?  // Multi-stop optimization
+    internal var stops: [Stop] = []  // List of route stops
+    internal var stopAnnotationManager: PointAnnotationManager?  // Markers for stops
+    internal var currentTruckProfile: HEREWaypointService.TruckProfile = .default
+    internal var isStopsPanelCollapsed: Bool = false  // Collapsed state for stops panel
+    internal var stopsPanelTrailingConstraint: NSLayoutConstraint?  // For animation
 
     // Hazard Warning System
     private var hazardMonitoringService: HazardMonitoringService?
@@ -146,6 +154,61 @@ class MapViewController: UIViewController {
         return widget
     }()
 
+    // Multi-stop waypoint UI components
+    lazy var addStopButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        button.setImage(UIImage(systemName: "plus.circle.fill", withConfiguration: config), for: .normal)
+        button.backgroundColor = .systemBackground
+        button.tintColor = .systemBlue
+        button.layer.cornerRadius = 22
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(addStopTapped), for: .touchUpInside)
+        return button
+    }()
+
+    lazy var stopsPanel: UIView = {
+        let panel = UIView()
+        panel.backgroundColor = .systemBackground
+        panel.layer.cornerRadius = 16
+        panel.layer.shadowColor = UIColor.black.cgColor
+        panel.layer.shadowOpacity = 0.3
+        panel.layer.shadowOffset = CGSize(width: -2, height: 0)
+        panel.layer.shadowRadius = 8
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        return panel
+    }()
+
+    lazy var stopsTableView: UITableView = {
+        let table = UITableView()
+        table.backgroundColor = .clear
+        table.translatesAutoresizingMaskIntoConstraints = false
+        table.register(StopCell.self, forCellReuseIdentifier: "StopCell")
+        table.delegate = self
+        table.dataSource = self
+        table.dragDelegate = self
+        table.dropDelegate = self
+        table.dragInteractionEnabled = true
+        table.separatorStyle = .singleLine
+        return table
+    }()
+
+    lazy var optimizeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("🎯 Optimize Route", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        button.backgroundColor = .systemBlue
+        button.setTitleColor(.white, for: .normal)
+        button.layer.cornerRadius = 12
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(optimizeRouteTapped), for: .touchUpInside)
+        return button
+    }()
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -184,11 +247,13 @@ class MapViewController: UIViewController {
             hereTrafficService = HERETrafficService(apiKey: hereApiKey)
             hereRoutingService = HERERoutingService(apiKey: hereApiKey)
             hereWeatherService = HEREWeatherService(apiKey: hereApiKey)
+            waypointService = HEREWaypointService(apiKey: hereApiKey)
             print("✅ HERE Services initialized (fallback enabled):")
             print("   - Search: ✓")
             print("   - Traffic: ✓")
             print("   - Routing: ✓")
             print("   - Weather: ✓")
+            print("   - Waypoints: ✓")
         } else {
             print("ℹ️ HERE API key not found - fallback services disabled")
             print("   To enable HERE fallback: Add HEREAPIKey to Info.plist")
@@ -205,6 +270,7 @@ class MapViewController: UIViewController {
         setupTestPaywallButton()  // TEST BUTTON
         setupWeatherWidget()
         setupTrafficWidget()
+        setupWaypointUI()  // Multi-stop routing UI
         setupCustomSearchBar()  // Custom liquid glass search bar
 
         // Ensure proper z-ordering (bring controls to front)
@@ -216,6 +282,8 @@ class MapViewController: UIViewController {
         view.bringSubviewToFront(speedLimitView)
         view.bringSubviewToFront(roadNameLabel)
         view.bringSubviewToFront(routePreviewContainer)
+        view.bringSubviewToFront(addStopButton)  // Multi-stop button
+        view.bringSubviewToFront(stopsPanel)  // Multi-stop panel
 
         // CRITICAL: Bring search UI to front so results are visible
         bringSearchUIToFront()
@@ -362,6 +430,9 @@ class MapViewController: UIViewController {
 
         // Create annotation manager for traffic incidents
         incidentAnnotationManager = navigationMapView.mapView.annotations.makePointAnnotationManager()
+
+        // Create annotation manager for route stops
+        stopAnnotationManager = navigationMapView.mapView.annotations.makePointAnnotationManager()
 
         print("✅ Annotation managers initialized")
     }
@@ -990,6 +1061,15 @@ class MapViewController: UIViewController {
         currentNavigationRoutes = navigationRoutes
         selectedAlternativeRouteIndex = nil
 
+        // Auto-collapse stops panel when route preview appears
+        if !stopsPanel.isHidden && !isStopsPanelCollapsed {
+            isStopsPanelCollapsed = true
+            stopsPanel.transform = .identity  // Clear any transform
+            stopsPanelTrailingConstraint?.constant = -250  // Collapse to 50px edge
+            view.layoutIfNeeded()
+            print("📍 Auto-collapsed stops panel for route preview")
+        }
+
         // Use Mapbox NavigationMapView's showcase() method to display route with all alternatives
         navigationMapView.showcase(navigationRoutes, routesPresentationStyle: .all(shouldFit: true), animated: true)
 
@@ -1505,6 +1585,155 @@ class MapViewController: UIViewController {
                 present(alert, animated: true)
             }
         }
+    }
+
+    // MARK: - Multi-Stop Route Calculation
+
+    internal func calculateMapboxMultiStopRoute(
+        from origin: CLLocationCoordinate2D,
+        through waypoints: [CLLocationCoordinate2D],
+        retryCount: Int = 0
+    ) {
+        guard !waypoints.isEmpty else {
+            print("⚠️ No waypoints provided for multi-stop route")
+            return
+        }
+
+        // Validate all coordinates before proceeding
+        let allCoordinates = [origin] + waypoints
+        for (index, coordinate) in allCoordinates.enumerated() {
+            guard CLLocationCoordinate2DIsValid(coordinate) else {
+                print("❌ Invalid coordinate at index \(index): lat=\(coordinate.latitude), lng=\(coordinate.longitude)")
+
+                let alert = UIAlertController(
+                    title: "Invalid Location",
+                    message: "One of the stops has an invalid location. Please remove it and try again.",
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+                return
+            }
+
+            // Validate coordinate is not at 0,0 (common placeholder error)
+            if coordinate.latitude == 0 && coordinate.longitude == 0 {
+                print("❌ Coordinate at index \(index) is at 0,0 - likely a placeholder value")
+
+                let alert = UIAlertController(
+                    title: "Invalid Location",
+                    message: "One of the stops has not been properly set. Please check all stops.",
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+                return
+            }
+        }
+
+        print("🗺️ Calculating Mapbox multi-stop route (attempt \(retryCount + 1)/3)")
+        print("   Origin: \(origin.latitude), \(origin.longitude)")
+        for (index, waypoint) in waypoints.enumerated() {
+            print("   Stop \(index + 1): \(waypoint.latitude), \(waypoint.longitude)")
+        }
+
+        // Build waypoints array: origin + intermediate stops + final destination
+        let allWaypoints = [origin] + waypoints
+
+        // Create route options with all waypoints
+        let options = NavigationRouteOptions(coordinates: allWaypoints)
+
+        // Set truck-specific parameters
+        options.maximumHeight = truckHeight
+        options.maximumWidth = truckWidth
+        options.maximumWeight = truckWeight
+
+        // Avoid unpaved roads
+        options.roadClassesToAvoid = [.unpaved]
+
+        // Request route alternatives
+        options.includesAlternativeRoutes = false  // Multi-stop routes don't need alternatives
+
+        // Enable detailed annotations for navigation
+        options.attributeOptions = [.speed, .distance, .expectedTravelTime, .congestionLevel]
+
+        print("🚛 Multi-stop route with truck restrictions: H:\(truckHeight)m W:\(truckWidth)m Wt:\(truckWeight)kg")
+
+        // Calculate route using Navigation Provider
+        let request = mapboxNavigation.routingProvider().calculateRoutes(options: options)
+
+        Task { @MainActor in
+            switch await request.result {
+            case .success(let navigationRoutes):
+                let mainRoute = navigationRoutes.mainRoute.route
+
+                print("✅ Mapbox multi-stop route calculated successfully")
+                print("🗺️ Route through \(waypoints.count) waypoints")
+                print("   Distance: \(String(format: "%.1f", mainRoute.distance / 1609.34)) mi")
+                print("   Duration: \(String(format: "%.0f", mainRoute.expectedTravelTime / 60)) min")
+                print("   Legs: \(mainRoute.legs.count)")
+
+                // Calculate ETAs for each stop based on route legs
+                self.updateStopETAs(from: mainRoute)
+
+                // Show route preview with navigation start button
+                showRoutePreview(for: navigationRoutes)
+
+            case .failure(let error):
+                print("❌ Multi-stop route calculation failed (attempt \(retryCount + 1)/3): \(error)")
+                print("   Error type: \(type(of: error))")
+                print("   Error description: \(error.localizedDescription)")
+
+                // Retry with exponential backoff for transient errors
+                if retryCount < 2 {
+                    let delay = Double(retryCount + 1) * 1.0  // 1s, 2s delays
+                    print("⏳ Retrying in \(delay)s...")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                        self?.calculateMapboxMultiStopRoute(from: origin, through: waypoints, retryCount: retryCount + 1)
+                    }
+                } else {
+                    // Max retries reached - show error to user
+                    let alert = UIAlertController(
+                        title: "Multi-Stop Route Error",
+                        message: "Could not calculate route through all stops after 3 attempts. Please try again or adjust your stops.\n\nError: \(error.localizedDescription)",
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    present(alert, animated: true)
+                }
+            }
+        }
+    }
+
+    // MARK: - Update Stop ETAs
+
+    private func updateStopETAs(from route: MapboxDirections.Route) {
+        // Calculate cumulative arrival times from route legs
+        var cumulativeTime: TimeInterval = 0
+        let departureTime = Date()
+
+        print("🕐 Calculating ETAs for \(stops.count) stops from \(route.legs.count) legs")
+
+        // Each leg represents travel from one waypoint to the next
+        // Leg 0: Origin → Stop 1
+        // Leg 1: Stop 1 → Stop 2
+        // Leg N-1: Stop N-1 → Stop N
+        for (index, leg) in route.legs.enumerated() {
+            cumulativeTime += leg.expectedTravelTime
+
+            // Update stop ETA (index matches because first leg goes to first stop)
+            if index < stops.count {
+                let arrivalTime = departureTime.addingTimeInterval(cumulativeTime)
+                stops[index].estimatedArrival = arrivalTime
+
+                let formatter = DateFormatter()
+                formatter.timeStyle = .short
+                print("   Stop \(index + 1): \(stops[index].name) - ETA \(formatter.string(from: arrivalTime)) (\(String(format: "%.0f", leg.expectedTravelTime / 60)) min leg)")
+            }
+        }
+
+        // Reload table view to show updated ETAs
+        stopsTableView.reloadData()
+        print("✅ ETAs updated for all stops")
     }
 
     private func startNavigation(with navigationRoutes: NavigationRoutes) {

@@ -88,6 +88,7 @@ class HERERoutingService {
     func calculateRoute(
         from origin: CLLocationCoordinate2D,
         to destination: CLLocationCoordinate2D,
+        via waypoints: [CLLocationCoordinate2D] = [],
         truckParams: TruckParameters,
         avoidTolls: Bool = false,
         completion: @escaping (Result<HERERoute, Error>) -> Void
@@ -100,16 +101,20 @@ class HERERoutingService {
             URLQueryItem(name: "transportMode", value: "truck"),
             URLQueryItem(name: "origin", value: "\(origin.latitude),\(origin.longitude)"),
             URLQueryItem(name: "destination", value: "\(destination.latitude),\(destination.longitude)"),
-            URLQueryItem(name: "return", value: "polyline,summary,actions,instructions,turnByTurnActions,elevation,tolls")
+            URLQueryItem(name: "return", value: "polyline,summary,actions,tolls")  // HERE v8 valid return values
         ]
 
-        // Truck-specific parameters
+        // Add intermediate waypoints (via points)
+        for waypoint in waypoints {
+            queryItems.append(URLQueryItem(name: "via", value: "\(waypoint.latitude),\(waypoint.longitude)"))
+        }
+
+        // Truck-specific parameters (HERE API v8 format)
+        // HERE API v8 requires dimensions in CENTIMETERS, weight in kg
         queryItems.append(URLQueryItem(name: "truck[grossWeight]", value: String(format: "%.0f", truckParams.weight)))
-        queryItems.append(URLQueryItem(name: "truck[height]", value: String(format: "%.2f", truckParams.height)))
-        queryItems.append(URLQueryItem(name: "truck[width]", value: String(format: "%.2f", truckParams.width)))
-        queryItems.append(URLQueryItem(name: "truck[length]", value: String(format: "%.2f", truckParams.length)))
-        queryItems.append(URLQueryItem(name: "truck[axleCount]", value: "\(truckParams.axleCount)"))
-        queryItems.append(URLQueryItem(name: "truck[trailerCount]", value: "\(truckParams.trailerCount)"))
+        queryItems.append(URLQueryItem(name: "truck[height]", value: String(format: "%.0f", truckParams.height * 100)))  // meters to cm
+        queryItems.append(URLQueryItem(name: "truck[width]", value: String(format: "%.0f", truckParams.width * 100)))    // meters to cm
+        queryItems.append(URLQueryItem(name: "truck[length]", value: String(format: "%.0f", truckParams.length * 100)))  // meters to cm
 
         // Hazmat restrictions
         if let hazmat = truckParams.hazardousMaterials, !hazmat.isEmpty {
@@ -123,10 +128,6 @@ class HERERoutingService {
             queryItems.append(URLQueryItem(name: "avoid[features]", value: "tollRoad"))
         }
 
-        // Route preferences
-        queryItems.append(URLQueryItem(name: "alternatives", value: "3")) // Get 3 alternative routes
-        queryItems.append(URLQueryItem(name: "units", value: "imperial"))  // Match app units
-
         urlComponents.queryItems = queryItems
 
         guard let url = urlComponents.url else {
@@ -134,7 +135,7 @@ class HERERoutingService {
             return
         }
 
-        print("🚛 HERE Truck Routing from \(origin) to \(destination)")
+        print("🚛 HERE Truck Routing from \(origin) to \(destination) via \(waypoints.count) waypoints")
         print("   Weight: \(String(format: "%.0f", truckParams.weight))kg, Height: \(String(format: "%.2f", truckParams.height))m")
         print("🌐 URL: \(url.absoluteString)")
 
@@ -148,6 +149,10 @@ class HERERoutingService {
             if let httpResponse = response as? HTTPURLResponse {
                 print("📡 HERE Routing response status: \(httpResponse.statusCode)")
                 if httpResponse.statusCode != 200 {
+                    // Print error response body for debugging
+                    if let data = data, let errorBody = String(data: data, encoding: .utf8) {
+                        print("❌ HERE Routing error response: \(errorBody)")
+                    }
                     let errorMsg = "HTTP \(httpResponse.statusCode): \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))"
                     completion(.failure(NSError(domain: "HERERouting", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
                     return
@@ -177,13 +182,12 @@ class HERERoutingService {
                 // Parse route sections
                 let sections = firstRoute.sections.map { section -> HERERoute.RouteSection in
                     let instructions = section.actions?.map { action -> HERERoute.RouteSection.Instruction in
+                        // Note: offset is distance along polyline, not a coordinate
+                        // TODO: Decode polyline and extract coordinate at offset position
                         return HERERoute.RouteSection.Instruction(
                             text: action.instruction ?? "",
                             distance: action.length ?? 0,
-                            coordinate: CLLocationCoordinate2D(
-                                latitude: action.offset ?? 0,
-                                longitude: 0
-                            ),
+                            coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0),  // Placeholder until polyline decoding implemented
                             action: action.action ?? "",
                             direction: action.direction
                         )

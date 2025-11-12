@@ -140,7 +140,8 @@ class HEREWeatherService {
 
                 // Convert to imperial units (app standard)
                 let tempF = (observation.temperature ?? 0) * 9/5 + 32
-                let feelsLikeF = (observation.comfort ?? tempF - 32) * 9/5 + 32
+                // If comfort (feels like) is available in Celsius, convert it; otherwise use actual temp
+                let feelsLikeF = (observation.comfort ?? observation.temperature ?? 0) * 9/5 + 32
                 let windMph = (observation.windSpeed ?? 0) * 2.237
                 let visibilityMiles = (observation.visibility ?? 0) / 1609.34
                 let precipInches = (observation.precipitation1H ?? 0) / 25.4
