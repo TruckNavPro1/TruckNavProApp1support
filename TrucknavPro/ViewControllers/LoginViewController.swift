@@ -10,6 +10,22 @@ class LoginViewController: UIViewController {
 
     // MARK: - UI Components
 
+    private let backgroundImageView: UIImageView = {
+        let iv = UIImageView()
+        // User needs to add "truck_background" image to Assets.xcassets
+        iv.image = UIImage(named: "truck_background")
+        iv.contentMode = .scaleAspectFill
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        return iv
+    }()
+
+    private let overlayView: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
     private let scrollView: UIScrollView = {
         let sv = UIScrollView()
         sv.translatesAutoresizingMaskIntoConstraints = false
@@ -35,6 +51,7 @@ class LoginViewController: UIViewController {
         let label = UILabel()
         label.text = "TruckNav Pro"
         label.font = .systemFont(ofSize: 36, weight: .bold)
+        label.textColor = .white
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -44,7 +61,7 @@ class LoginViewController: UIViewController {
         let label = UILabel()
         label.text = "Professional Truck Navigation"
         label.font = .systemFont(ofSize: 16, weight: .regular)
-        label.textColor = .secondaryLabel
+        label.textColor = .white.withAlphaComponent(0.9)
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -58,7 +75,7 @@ class LoginViewController: UIViewController {
         tf.autocorrectionType = .no
         tf.borderStyle = .roundedRect
         tf.font = .systemFont(ofSize: 16)
-        tf.backgroundColor = .secondarySystemBackground
+        tf.backgroundColor = UIColor.white.withAlphaComponent(0.9)
         tf.translatesAutoresizingMaskIntoConstraints = false
         return tf
     }()
@@ -69,7 +86,7 @@ class LoginViewController: UIViewController {
         tf.isSecureTextEntry = true
         tf.borderStyle = .roundedRect
         tf.font = .systemFont(ofSize: 16)
-        tf.backgroundColor = .secondarySystemBackground
+        tf.backgroundColor = UIColor.white.withAlphaComponent(0.9)
         tf.translatesAutoresizingMaskIntoConstraints = false
         return tf
     }()
@@ -108,7 +125,7 @@ class LoginViewController: UIViewController {
     private let skipButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Continue without account", for: .normal)
-        button.setTitleColor(.secondaryLabel, for: .normal)
+        button.setTitleColor(.white.withAlphaComponent(0.8), for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: 14)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -130,7 +147,11 @@ class LoginViewController: UIViewController {
     // MARK: - Setup
 
     private func setupUI() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .black
+
+        // Add background image and overlay first
+        view.addSubview(backgroundImageView)
+        view.addSubview(overlayView)
 
         // Add subviews
         view.addSubview(scrollView)
@@ -152,6 +173,18 @@ class LoginViewController: UIViewController {
 
         // Layout constraints
         NSLayoutConstraint.activate([
+            // Background Image
+            backgroundImageView.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundImageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundImageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backgroundImageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            // Overlay
+            overlayView.topAnchor.constraint(equalTo: view.topAnchor),
+            overlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlayView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
             // Scroll View
             scrollView.topAnchor.constraint(equalTo: view.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
