@@ -83,7 +83,7 @@ You agree NOT to:
 
 - Your location data is processed to provide navigation services
 - We do not sell your personal information
-- See our [Privacy Policy](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md) for details
+- See our [Privacy Policy](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/PRIVACY_POLICY.md) for details
 - You are responsible for data usage charges from your carrier
 
 ## 9. Changes to Terms
@@ -141,8 +141,8 @@ These Terms, together with the Privacy Policy and EULA, constitute the entire ag
 ## Contact
 
 For questions or support:
-- **GitHub Issues:** https://github.com/derrickgray494-rgb/TruckProNav/issues
-- **Support:** See [SUPPORT.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/SUPPORT.md)
+- **GitHub Issues:** https://github.com/TruckNavPro1/TruckNavProApp/issues
+- **Support:** See [SUPPORT.md](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/SUPPORT.md)
 
 ---
 

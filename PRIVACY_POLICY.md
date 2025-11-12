@@ -9,7 +9,7 @@
 
 Welcome to TruckNav Pro (the "App"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application. The developer(s) of this App choose to remain anonymous, and all support is provided through GitHub.
 
-**BY USING TRUCKNAV PRO, YOU VOLUNTARILY CONSENT TO THIS PRIVACY POLICY AND OUR [TERMS OF SERVICE](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md). IF YOU DO NOT AGREE WITH THE TERMS OF THIS PRIVACY POLICY, PLEASE DO NOT USE THE APP.**
+**BY USING TRUCKNAV PRO, YOU VOLUNTARILY CONSENT TO THIS PRIVACY POLICY AND OUR [TERMS OF SERVICE](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/TERMS_OF_SERVICE.md). IF YOU DO NOT AGREE WITH THE TERMS OF THIS PRIVACY POLICY, PLEASE DO NOT USE THE APP.**
 
 Your use of TruckNav Pro is entirely voluntary and at your own discretion. We are committed to transparency about our data practices so you can make informed decisions about using our services.
 
@@ -319,10 +319,10 @@ For users in the EEA, we rely on Standard Contractual Clauses for data transfers
 
 The developer(s) of this App choose to remain anonymous. If you have questions, concerns, or requests regarding this Privacy Policy or your personal data, please contact us through:
 
-**GitHub Issues:** https://github.com/derrickgray494-rgb/TruckProNav/issues
-**Support Documentation:** [SUPPORT.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/SUPPORT.md)
-**Terms of Service:** [TERMS_OF_SERVICE.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md)
-**EULA:** [EULA.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/EULA.md)
+**GitHub Issues:** https://github.com/TruckNavPro1/TruckNavProApp/issues
+**Support Documentation:** [SUPPORT.md](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/SUPPORT.md)
+**Terms of Service:** [TERMS_OF_SERVICE.md](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/TERMS_OF_SERVICE.md)
+**EULA:** [EULA.md](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/EULA.md)
 
 **Response Time:** We aim to respond to privacy inquiries within 14 business days through GitHub Issues.
 
@@ -339,7 +339,7 @@ To delete your account and all associated data:
    - Confirm deletion
 
 2. **GitHub Request:**
-   - Create an issue at [TruckProNav Issues](https://github.com/derrickgray494-rgb/TruckProNav/issues)
+   - Create an issue at [TruckNavProApp Issues](https://github.com/TruckNavPro1/TruckNavProApp/issues)
    - Title: "Account Deletion Request"
    - Include your registered email or user ID (do NOT include passwords)
    - Allow up to 30 days for complete deletion

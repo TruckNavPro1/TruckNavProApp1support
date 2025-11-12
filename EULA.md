@@ -109,7 +109,7 @@ You agree to defend, indemnify, and hold harmless the developer(s) from any clai
 
 ## 9. Privacy and Data
 
-- Your data is processed according to our [Privacy Policy](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md)
+- Your data is processed according to our [Privacy Policy](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/PRIVACY_POLICY.md)
 - Location data is used to provide navigation services
 - We do not sell your personal information
 - You are responsible for carrier data charges
@@ -159,8 +159,8 @@ Upon termination:
 
 The developer(s) of this App choose to remain anonymous. All support and communications are provided through:
 
-- **GitHub Issues:** https://github.com/derrickgray494-rgb/TruckProNav/issues
-- **Support Documentation:** See [SUPPORT.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/SUPPORT.md)
+- **GitHub Issues:** https://github.com/TruckNavPro1/TruckNavProApp/issues
+- **Support Documentation:** See [SUPPORT.md](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/SUPPORT.md)
 
 You acknowledge and accept this anonymous arrangement.
 
@@ -178,7 +178,7 @@ If any provision of this EULA is found unenforceable, the remaining provisions r
 
 ## 16. Entire Agreement
 
-This EULA, together with the [Terms of Service](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md) and [Privacy Policy](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md), constitutes the entire agreement between you and the developer(s).
+This EULA, together with the [Terms of Service](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/TERMS_OF_SERVICE.md) and [Privacy Policy](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/PRIVACY_POLICY.md), constitutes the entire agreement between you and the developer(s).
 
 ## 17. Export Compliance
 
@@ -192,9 +192,9 @@ If you are a U.S. Government entity, the App is provided with "RESTRICTED RIGHTS
 
 For questions, support, or EULA concerns:
 
-- **GitHub Issues:** https://github.com/derrickgray494-rgb/TruckProNav/issues
-- **Support:** [SUPPORT.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/SUPPORT.md)
-- **Terms:** [TERMS_OF_SERVICE.md](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md)
+- **GitHub Issues:** https://github.com/TruckNavPro1/TruckNavProApp/issues
+- **Support:** [SUPPORT.md](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/SUPPORT.md)
+- **Terms:** [TERMS_OF_SERVICE.md](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/TERMS_OF_SERVICE.md)
 
 ---
 

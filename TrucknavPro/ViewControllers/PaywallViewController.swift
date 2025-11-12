@@ -334,19 +334,19 @@ class PaywallViewController: UIViewController {
         let alert = UIAlertController(title: "Legal", message: "Choose a document to view", preferredStyle: .actionSheet)
 
         alert.addAction(UIAlertAction(title: "Terms of Service", style: .default) { _ in
-            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md") {
+            if let url = URL(string: "https://github.com/TruckNavPro1/TruckNavProApp/blob/main/TERMS_OF_SERVICE.md") {
                 UIApplication.shared.open(url)
             }
         })
 
         alert.addAction(UIAlertAction(title: "Privacy Policy", style: .default) { _ in
-            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md") {
+            if let url = URL(string: "https://github.com/TruckNavPro1/TruckNavProApp/blob/main/PRIVACY_POLICY.md") {
                 UIApplication.shared.open(url)
             }
         })
 
         alert.addAction(UIAlertAction(title: "EULA", style: .default) { _ in
-            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/EULA.md") {
+            if let url = URL(string: "https://github.com/TruckNavPro1/TruckNavProApp/blob/main/EULA.md") {
                 UIApplication.shared.open(url)
             }
         })

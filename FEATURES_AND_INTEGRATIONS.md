@@ -627,10 +627,10 @@ Cloud:
 
 ## Support & Documentation
 
-**GitHub Repository:** https://github.com/derrickgray494-rgb/TruckProNav
+**GitHub Repository:** https://github.com/TruckNavPro1/TruckNavProApp
 
 **Support Channels:**
-- GitHub Issues: https://github.com/derrickgray494-rgb/TruckProNav/issues
+- GitHub Issues: https://github.com/TruckNavPro1/TruckNavProApp/issues
 - Support Documentation: SUPPORT.md
 
 **Legal:**
