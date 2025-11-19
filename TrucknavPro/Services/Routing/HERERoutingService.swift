@@ -14,6 +14,15 @@ class HERERoutingService {
     private let apiKey: String
     private let routingURL = "https://router.hereapi.com/v8"
 
+    // Fast URLSession with short timeout for better performance
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10.0  // 10 second timeout for routing (slightly longer)
+        config.timeoutIntervalForResource = 20.0  // 20 second total timeout
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
     struct TruckParameters {
         let weight: Double      // kg (convert from lbs)
         let height: Double      // meters (convert from ft)
@@ -139,7 +148,7 @@ class HERERoutingService {
         print("   Weight: \(String(format: "%.0f", truckParams.weight))kg, Height: \(String(format: "%.2f", truckParams.height))m")
         print("🌐 URL: \(url.absoluteString)")
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ HERE Routing error: \(error.localizedDescription)")
                 completion(.failure(error))
@@ -262,7 +271,7 @@ class HERERoutingService {
 
         print("🚦 HERE Speed Limits API: \(coordinates.count) coordinates")
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ HERE Speed Limits error: \(error.localizedDescription)")
                 completion(.failure(error))

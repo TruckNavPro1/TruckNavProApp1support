@@ -13,6 +13,15 @@ class TomTomTrafficService {
     private let baseFlowURL = "https://api.tomtom.com/traffic/services/4/flowSegmentData"
     private let baseIncidentURL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
 
+    // Fast URLSession with short timeout for better performance
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 12.0  // 8 second timeout
+        config.timeoutIntervalForResource = 20.0  // 15 second total timeout
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
     init(apiKey: String) {
         self.apiKey = apiKey
     }
@@ -42,7 +51,7 @@ class TomTomTrafficService {
 
         print("🚦 Traffic Flow API URL: \(url.absoluteString)")
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ Traffic Flow network error: \(error.localizedDescription)")
                 completion(.failure(error))
@@ -131,7 +140,7 @@ class TomTomTrafficService {
 
         print("🚨 Traffic Incidents API URL: \(url.absoluteString)")
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ Traffic Incidents network error: \(error.localizedDescription)")
                 completion(.failure(error))

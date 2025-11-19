@@ -443,12 +443,6 @@ extension MapViewController {
 
         for result in results {
             var annotation = PointAnnotation(coordinate: result.coordinate)
-            annotation.textField = result.name
-            annotation.textColor = StyleColor(.label)
-            annotation.textHaloColor = StyleColor(.systemBackground)
-            annotation.textHaloWidth = 2
-            annotation.textOffset = [0, -1.5]
-            annotation.textSize = 12
 
             // Use category-specific icon or default pin
             if let category = category {

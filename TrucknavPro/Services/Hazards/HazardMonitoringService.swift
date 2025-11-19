@@ -18,6 +18,7 @@ class HazardMonitoringService {
     private var lastOSMQueryTime: Date?
 
     var onHazardDetected: ((HazardAlert) -> Void)?
+    var onRestrictionsLoaded: (([OSMRestriction]) -> Void)?
 
     init(tomTomApiKey: String) {
         self.tomTomApiKey = tomTomApiKey
@@ -41,6 +42,9 @@ class HazardMonitoringService {
             self.cachedRestrictions = restrictions
             self.lastOSMQueryTime = Date()
             print("🗺️ Cached \(restrictions.count) restrictions from OSM")
+
+            // Notify that restrictions are loaded for map display
+            self.onRestrictionsLoaded?(restrictions)
 
             // Check immediately with cached restrictions
             self.checkForHazards(at: currentLocation, alongRoute: route)
@@ -78,13 +82,22 @@ class HazardMonitoringService {
     private func checkForHazards(at location: CLLocation, alongRoute route: [CLLocationCoordinate2D]) {
         // Check if hazard warnings are enabled
         guard TruckSettings.enableHazardWarnings else {
+            print("🚨 Hazard warnings disabled in settings")
             return
         }
 
-        // Get upcoming route segment (next 2km/1.2 miles)
-        let upcomingSegment = getUpcomingRouteSegment(from: location.coordinate, route: route, lookAheadDistance: 2000)
+        print("🔍 Checking hazards at location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+        print("🚛 Truck height: \(TruckSettings.height)m (\(TruckSettings.height * 3.28084)ft)")
 
-        guard !upcomingSegment.isEmpty else { return }
+        // Get upcoming route segment (next 3km/2 miles) - INCREASED range
+        let upcomingSegment = getUpcomingRouteSegment(from: location.coordinate, route: route, lookAheadDistance: 3000)
+
+        guard !upcomingSegment.isEmpty else {
+            print("⚠️ No upcoming route segment found")
+            return
+        }
+
+        print("📍 Checking \(upcomingSegment.count) points along upcoming route")
 
         // Check for OSM restrictions
         checkOSMRestrictions(for: upcomingSegment, from: location)
@@ -125,7 +138,12 @@ class HazardMonitoringService {
 
     private func checkOSMRestrictions(for segment: [CLLocationCoordinate2D], from location: CLLocation) {
         // Check cached OSM restrictions against upcoming route segment
-        guard !cachedRestrictions.isEmpty else { return }
+        guard !cachedRestrictions.isEmpty else {
+            print("⚠️ No cached OSM restrictions to check")
+            return
+        }
+
+        print("🗺️ Checking \(cachedRestrictions.count) cached OSM restrictions")
 
         // Get truck dimensions
         let truckHeight = TruckSettings.height
@@ -135,6 +153,7 @@ class HazardMonitoringService {
 
         // Check each restriction
         for restriction in cachedRestrictions {
+            print("   Checking restriction: \(restriction.type.rawValue) = \(restriction.value)\(restriction.unit)")
             // Find if restriction is in upcoming segment
             guard let closestPoint = findClosestPoint(to: restriction.coordinate, in: segment) else { continue }
 
@@ -181,7 +200,8 @@ class HazardMonitoringService {
                 let alert = HazardAlert(
                     type: restriction.toHazardType(),
                     distanceInMeters: distanceToRestriction,
-                    location: restriction.roadName
+                    location: restriction.roadName,
+                    coordinate: restriction.coordinate
                 )
                 onHazardDetected?(alert)
                 print("🚨 OSM Restriction: \(restriction.type.rawValue) at \(String(format: "%.0f", distanceToRestriction))m - \(restriction.roadName ?? "unnamed road")")

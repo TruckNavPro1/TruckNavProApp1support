@@ -12,6 +12,15 @@ class TomTomSearchService {
     private let apiKey: String
     private let baseURL = "https://api.tomtom.com/search/2"
 
+    // Fast URLSession with short timeout for better performance
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 12.0  // 8 second timeout
+        config.timeoutIntervalForResource = 20.0  // 15 second total timeout
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
     // Track current search task to prevent race conditions
     private var currentSearchTask: URLSessionDataTask?
     private var currentCategoryTask: URLSessionDataTask?
@@ -101,7 +110,7 @@ class TomTomSearchService {
         // Cancel previous category search to prevent race conditions
         currentCategoryTask?.cancel()
 
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+        let task = urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ Network error: \(error.localizedDescription)")
                 completion(.failure(error))
@@ -195,7 +204,7 @@ class TomTomSearchService {
         // Cancel previous text search to prevent race conditions
         currentSearchTask?.cancel()
 
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+        let task = urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ Network error: \(error.localizedDescription)")
                 completion(.failure(error))

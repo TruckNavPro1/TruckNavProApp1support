@@ -86,6 +86,7 @@ class MapViewController: UIViewController {
 
     private var trafficUpdateTimer: Timer?
     internal var incidentAnnotationManager: PointAnnotationManager?  // Internal for traffic extension
+    internal var hazardAnnotationManager: PointAnnotationManager?  // Markers for hazard warnings
 
     // Waypoint & Multi-Stop Routing
     internal var waypointService: HEREWaypointService?  // Multi-stop optimization
@@ -493,6 +494,9 @@ class MapViewController: UIViewController {
 
         // Create annotation manager for traffic incidents
         incidentAnnotationManager = navigationMapView.mapView.annotations.makePointAnnotationManager()
+
+        // Create annotation manager for hazard warnings
+        hazardAnnotationManager = navigationMapView.mapView.annotations.makePointAnnotationManager()
 
         // Create annotation manager for route stops
         stopAnnotationManager = navigationMapView.mapView.annotations.makePointAnnotationManager()
@@ -2272,6 +2276,12 @@ extension MapViewController: SettingsViewControllerDelegate {
                 self?.displayHazardWarning(alert)
             }
         }
+
+        hazardMonitoringService?.onRestrictionsLoaded = { [weak self] restrictions in
+            DispatchQueue.main.async {
+                self?.displayAllHazardMarkersOnMap(restrictions)
+            }
+        }
     }
 
     private func displayHazardWarning(_ alert: HazardAlert) {
@@ -2316,6 +2326,9 @@ extension MapViewController: SettingsViewControllerDelegate {
 
         currentHazardWarningView = warningView
 
+        // Add hazard marker to map
+        addHazardMarkerToMap(alert)
+
         // Play audio alert for critical hazards
         if alert.type.isCritical {
             playHazardAudioAlert()
@@ -2335,6 +2348,126 @@ extension MapViewController: SettingsViewControllerDelegate {
         AudioServicesPlaySystemSound(1310) // Soft notification chime
 
         print("🔔 Hazard notification sound played")
+    }
+
+    private func addHazardMarkerToMap(_ alert: HazardAlert) {
+        guard let manager = hazardAnnotationManager else { return }
+
+        // Create annotation for hazard
+        var annotation = PointAnnotation(coordinate: alert.coordinate)
+
+        // Set truck-specific icon based on hazard type
+        let iconName: String
+        let iconColor: UIColor
+
+        switch alert.type {
+        case .lowBridge:
+            iconName = "arrow.down.to.line"  // Height restriction
+            iconColor = UIColor(red: 0.95, green: 0.6, blue: 0.1, alpha: 1.0)  // Amber
+        case .weightLimit:
+            iconName = "scalemass.fill"  // Weight scale
+            iconColor = UIColor(red: 0.95, green: 0.65, blue: 0.15, alpha: 1.0)  // Warm orange
+        case .widthRestriction:
+            iconName = "arrow.left.and.right"  // Width arrows
+            iconColor = UIColor(red: 0.95, green: 0.65, blue: 0.15, alpha: 1.0)  // Warm orange
+        case .lengthRestriction:
+            iconName = "ruler.fill"  // Length measurement
+            iconColor = UIColor(red: 0.95, green: 0.65, blue: 0.15, alpha: 1.0)  // Warm orange
+        case .tunnelRestriction:
+            iconName = "lightbulb.slash.fill"  // Tunnel/no entry
+            iconColor = UIColor(red: 0.95, green: 0.6, blue: 0.1, alpha: 1.0)  // Amber
+        case .steepGrade:
+            iconName = "chevron.up"  // Steep incline
+            iconColor = UIColor(red: 1.0, green: 0.8, blue: 0.0, alpha: 1.0)  // Yellow-gold
+        }
+
+        annotation.image = .init(image: createHazardIcon(iconName: iconName, color: iconColor), name: "hazard-\(alert.coordinate.latitude)-\(alert.coordinate.longitude)")
+        annotation.iconAnchor = .center
+
+        // Add to manager
+        manager.annotations.append(annotation)
+        print("🗺️ Added hazard marker to map at \(alert.coordinate.latitude), \(alert.coordinate.longitude)")
+    }
+
+    private func createHazardIcon(iconName: String, color: UIColor) -> UIImage {
+        let size = CGSize(width: 36, height: 36)  // Slightly smaller
+        let renderer = UIGraphicsImageRenderer(size: size)
+
+        return renderer.image { context in
+            let ctx = context.cgContext
+
+            // Add subtle shadow
+            ctx.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.25).cgColor)
+
+            // Draw background circle with white border
+            UIColor.white.setFill()
+            let outerCircle = UIBezierPath(ovalIn: CGRect(origin: .zero, size: size))
+            outerCircle.fill()
+
+            ctx.setShadow(offset: .zero, blur: 0, color: nil)  // Remove shadow for inner elements
+
+            // Draw colored inner circle with gradient effect
+            color.setFill()
+            let innerCircle = UIBezierPath(ovalIn: CGRect(origin: CGPoint(x: 2.5, y: 2.5), size: CGSize(width: 31, height: 31)))
+            innerCircle.fill()
+
+            // Draw SF Symbol icon
+            if let symbol = UIImage(systemName: iconName) {
+                let symbolSize: CGFloat = 20  // Slightly smaller symbol
+                let symbolRect = CGRect(
+                    x: (size.width - symbolSize) / 2,
+                    y: (size.height - symbolSize) / 2,
+                    width: symbolSize,
+                    height: symbolSize
+                )
+
+                UIColor.white.setFill()
+                symbol.draw(in: symbolRect, blendMode: .normal, alpha: 1.0)
+            }
+        }
+    }
+
+    private func displayAllHazardMarkersOnMap(_ restrictions: [OSMRestriction]) {
+        guard let manager = hazardAnnotationManager else { return }
+
+        // Clear existing hazard markers
+        manager.annotations = []
+
+        var annotations: [PointAnnotation] = []
+
+        for restriction in restrictions {
+            var annotation = PointAnnotation(coordinate: restriction.coordinate)
+
+            // Set truck-specific icon based on restriction type
+            let iconName: String
+            let iconColor: UIColor
+
+            switch restriction.type {
+            case .maxheight:
+                iconName = "arrow.down.to.line"  // Height restriction
+                iconColor = UIColor(red: 0.95, green: 0.6, blue: 0.1, alpha: 1.0)  // Amber
+            case .maxweight:
+                iconName = "scalemass.fill"  // Weight scale
+                iconColor = UIColor(red: 0.95, green: 0.65, blue: 0.15, alpha: 1.0)  // Warm orange
+            case .maxwidth:
+                iconName = "arrow.left.and.right"  // Width arrows
+                iconColor = UIColor(red: 0.95, green: 0.65, blue: 0.15, alpha: 1.0)  // Warm orange
+            case .maxlength:
+                iconName = "ruler.fill"  // Length measurement
+                iconColor = UIColor(red: 0.95, green: 0.65, blue: 0.15, alpha: 1.0)  // Warm orange
+            }
+
+            annotation.image = .init(
+                image: createHazardIcon(iconName: iconName, color: iconColor),
+                name: "restriction-\(restriction.coordinate.latitude)-\(restriction.coordinate.longitude)"
+            )
+            annotation.iconAnchor = .center
+
+            annotations.append(annotation)
+        }
+
+        manager.annotations = annotations
+        print("🗺️ Displayed \(annotations.count) hazard restriction markers on map")
     }
 }
 

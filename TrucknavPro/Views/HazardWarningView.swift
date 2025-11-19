@@ -4,6 +4,7 @@
 //
 
 import UIKit
+import CoreLocation
 
 enum HazardType {
     case lowBridge(clearance: Double, unit: String) // clearance in feet or meters
@@ -129,6 +130,7 @@ struct HazardAlert {
     let type: HazardType
     let distanceInMeters: Double
     let location: String?
+    let coordinate: CLLocationCoordinate2D
 
     var distanceDescription: String {
         // Convert to feet/miles for US display
@@ -165,37 +167,39 @@ class HazardWarningView: UIView {
     }
 
     private func setupUI() {
-        backgroundColor = UIColor.systemRed.withAlphaComponent(0.95)
-        layer.cornerRadius = 16
+        backgroundColor = UIColor.systemRed.withAlphaComponent(0.98)
+        layer.cornerRadius = 20
         layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.3
-        layer.shadowOffset = CGSize(width: 0, height: 4)
-        layer.shadowRadius = 8
+        layer.shadowOpacity = 0.5
+        layer.shadowOffset = CGSize(width: 0, height: 6)
+        layer.shadowRadius = 12
+        layer.borderWidth = 4
+        layer.borderColor = UIColor.white.cgColor
 
-        // Icon
-        iconLabel.font = .systemFont(ofSize: 40)
+        // Icon - MUCH LARGER
+        iconLabel.font = .systemFont(ofSize: 64)
         iconLabel.textAlignment = .center
         iconLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconLabel)
 
-        // Title
-        titleLabel.font = .systemFont(ofSize: 20, weight: .bold)
+        // Title - MUCH LARGER
+        titleLabel.font = .systemFont(ofSize: 28, weight: .black)
         titleLabel.textColor = .white
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
 
-        // Message
-        messageLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        // Message - LARGER
+        messageLabel.font = .systemFont(ofSize: 18, weight: .semibold)
         messageLabel.textColor = .white
         messageLabel.numberOfLines = 0
         messageLabel.textAlignment = .center
         messageLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(messageLabel)
 
-        // Distance
-        distanceLabel.font = .systemFont(ofSize: 24, weight: .bold)
-        distanceLabel.textColor = .white
+        // Distance - HUGE
+        distanceLabel.font = .systemFont(ofSize: 36, weight: .black)
+        distanceLabel.textColor = .yellow
         distanceLabel.textAlignment = .center
         distanceLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(distanceLabel)
@@ -237,19 +241,44 @@ class HazardWarningView: UIView {
         messageLabel.text = alert.type.message(truckHeight: truckHeight, truckWeight: truckWeight, truckWidth: truckWidth, truckLength: truckLength)
         distanceLabel.text = alert.distanceDescription
 
-        // Change color based on criticality - calm orange/yellow tones
+        // BRIGHT RED for critical hazards - IMPOSSIBLE TO MISS
         if alert.type.isCritical {
-            backgroundColor = UIColor.systemOrange.withAlphaComponent(0.95)
+            backgroundColor = UIColor.systemRed.withAlphaComponent(0.98)
         } else {
-            backgroundColor = UIColor.systemYellow.withAlphaComponent(0.95)
+            backgroundColor = UIColor.systemOrange.withAlphaComponent(0.98)
         }
 
-        // Animate entry
+        // STRONG HAPTIC FEEDBACK
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.warning)
+
+        // VIBRATION PATTERN for critical warnings
+        if alert.type.isCritical {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                generator.notificationOccurred(.warning)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                generator.notificationOccurred(.warning)
+            }
+        }
+
+        // Animate entry with BOUNCE
         alpha = 0
-        transform = CGAffineTransform(translationX: 0, y: -50)
-        UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5) {
+        transform = CGAffineTransform(translationX: 0, y: -100)
+        UIView.animate(withDuration: 0.6, delay: 0, usingSpringWithDamping: 0.5, initialSpringVelocity: 1.0) {
             self.alpha = 1
             self.transform = .identity
+        }
+
+        // FLASH animation for critical hazards
+        if alert.type.isCritical {
+            startFlashing()
+        }
+    }
+
+    private func startFlashing() {
+        UIView.animate(withDuration: 0.5, delay: 0, options: [.repeat, .autoreverse]) {
+            self.alpha = 0.7
         }
     }
 
@@ -264,7 +293,7 @@ class HazardWarningView: UIView {
     }
 
     func updateDistance(_ distanceInMeters: Double) {
-        let alert = HazardAlert(type: .lowBridge(clearance: 0, unit: ""), distanceInMeters: distanceInMeters, location: nil)
+        let alert = HazardAlert(type: .lowBridge(clearance: 0, unit: ""), distanceInMeters: distanceInMeters, location: nil, coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0))
         distanceLabel.text = alert.distanceDescription
     }
 }

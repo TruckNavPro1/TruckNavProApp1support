@@ -124,10 +124,9 @@ struct SignInView_Tron: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 8)
 
-                // Apple Sign In
+                // Apple Sign In - iPad compatible (no max width constraint)
                 AppleSignInButton_Supabase()
                     .frame(height: 52)
-                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 30)
                     .disabled(isLoading)
 

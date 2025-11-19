@@ -13,6 +13,15 @@ class HERETrafficService {
     private let apiKey: String
     private let trafficURL = "https://data.traffic.hereapi.com/v7"
 
+    // Fast URLSession with short timeout for better performance
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 12.0  // 8 second timeout
+        config.timeoutIntervalForResource = 20.0  // 15 second total timeout
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
     struct TrafficFlow {
         let currentSpeed: Double      // km/h
         let freeFlowSpeed: Double     // km/h
@@ -75,7 +84,7 @@ class HERETrafficService {
 
         print("🚦 HERE Traffic Flow API URL: \(url.absoluteString)")
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ HERE Traffic fetch error: \(error.localizedDescription)")
                 completion(.failure(error))
@@ -146,7 +155,7 @@ class HERETrafficService {
 
         print("🚨 HERE Traffic Incidents API URL: \(url.absoluteString)")
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ HERE Incidents error: \(error.localizedDescription)")
                 completion(.failure(error))

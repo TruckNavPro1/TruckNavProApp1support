@@ -13,6 +13,15 @@ class HEREWeatherService {
     private let apiKey: String
     private let weatherURL = "https://weather.hereapi.com/v3"
 
+    // Fast URLSession with short timeout for better performance
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 12.0  // 8 second timeout
+        config.timeoutIntervalForResource = 20.0  // 15 second total timeout
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
     struct WeatherConditions {
         let location: CLLocationCoordinate2D
         let temperature: Double         // Fahrenheit (converted from Celsius)
@@ -102,7 +111,7 @@ class HEREWeatherService {
         print("🌤️ HERE Weather: Current conditions at \(coordinate)")
         print("🌐 URL: \(url.absoluteString)")
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ HERE Weather error: \(error.localizedDescription)")
                 completion(.failure(error))
@@ -195,7 +204,7 @@ class HEREWeatherService {
 
         print("🌤️ HERE Weather: Along route")
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ HERE Weather (route) error: \(error.localizedDescription)")
                 completion(.failure(error))
@@ -274,7 +283,7 @@ class HEREWeatherService {
 
         print("🌤️ HERE Weather: Hourly forecast at \(coordinate)")
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("❌ HERE Weather (forecast) error: \(error.localizedDescription)")
                 completion(.failure(error))

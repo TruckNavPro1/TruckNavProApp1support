@@ -205,6 +205,15 @@ class TomTomRoutingService {
     private let apiKey: String
     private let baseURL = "https://api.tomtom.com/routing/1/calculateRoute"
 
+    // Fast URLSession with short timeout for better performance
+    private lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10.0  // 10 second timeout for routing
+        config.timeoutIntervalForResource = 20.0  // 20 second total timeout
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
     init(apiKey: String) {
         self.apiKey = apiKey
     }
@@ -246,7 +255,7 @@ class TomTomRoutingService {
         print("🚛 TomTom API Request: \(url.absoluteString)")
 
         // Make request
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+        let task = urlSession.dataTask(with: url) { data, response, error in
             if let error = error {
                 completion(.failure(error))
                 return
