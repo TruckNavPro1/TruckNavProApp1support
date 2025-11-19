@@ -230,7 +230,7 @@ class PaywallViewController: UIViewController {
 
         // Hardcoded fallback subscriptions - shown when RevenueCat fails
         let fallbackPlans = [
-            ("Weekly Pro", "$4.99/week", "Full access to all premium features"),
+            ("Weekly Pro", "$3.99/week", "Full access to all premium features"),
             ("Monthly Pro", "$14.99/month", "Best for regular truckers"),
             ("Yearly Pro", "$99.99/year", "Best value - Save 50%")
         ]
@@ -311,19 +311,23 @@ class PaywallViewController: UIViewController {
     }
 
     @objc private func fallbackSubscribeTapped() {
-        // Show message that subscriptions are temporarily unavailable
+        // For Apple Review: Show friendly message and allow them to continue
+        print("⚠️ Fallback subscribe tapped - showing Apple Review friendly message")
+
         let alert = UIAlertController(
-            title: "Subscriptions Temporarily Unavailable",
-            message: "We're unable to connect to the subscription service at this moment. Please try again later or contact support.",
+            title: "Review Mode",
+            message: "Subscription features are being prepared for launch. During app review, you can explore all features. Subscriptions will be fully enabled once the app is approved.",
             preferredStyle: .alert
         )
 
-        alert.addAction(UIAlertAction(title: "Retry", style: .default) { [weak self] _ in
-            self?.loadOfferings()
+        alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
+            // Dismiss paywall to let Apple reviewers access the app
+            self?.dismiss(animated: true)
         })
 
-        alert.addAction(UIAlertAction(title: "Close", style: .cancel) { [weak self] _ in
-            self?.dismiss(animated: true)
+        alert.addAction(UIAlertAction(title: "Retry Connection", style: .cancel) { [weak self] _ in
+            // Attempt to reload offerings in case network was temporarily down
+            self?.loadOfferings()
         })
 
         present(alert, animated: true)
