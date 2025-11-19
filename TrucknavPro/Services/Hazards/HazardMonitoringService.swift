@@ -9,19 +9,28 @@ import MapboxDirections
 
 class HazardMonitoringService {
 
-    private let tomTomApiKey: String
+    private let hereApiKey: String
     private let osmService: OpenStreetMapService
     private var monitoringTimer: Timer?
     private var lastCheckedLocation: CLLocation?
     private let checkDistanceThreshold: Double = 100 // Check every 100 meters
     private var cachedRestrictions: [OSMRestriction] = []
     private var lastOSMQueryTime: Date?
+    
+    // Incremental Querying
+    private var lastQueryLocation: CLLocation?
+    private let queryInterval: Double = 5000 // Query every 5km
+    private let queryLookAhead: Double = 10000 // Query 10km ahead
 
     var onHazardDetected: ((HazardAlert) -> Void)?
     var onRestrictionsLoaded: (([OSMRestriction]) -> Void)?
 
-    init(tomTomApiKey: String) {
-        self.tomTomApiKey = tomTomApiKey
+    // Track ignored hazards to prevent re-alerting
+    private var ignoredHazards: Set<String> = []
+
+
+    init(hereApiKey: String) {
+        self.hereApiKey = hereApiKey
         self.osmService = OpenStreetMapService()
     }
 
@@ -36,19 +45,13 @@ class HazardMonitoringService {
 
         print("🚨 Hazard monitoring started")
 
-        // Query OSM for restrictions along the entire route
-        osmService.queryRestrictions(alongRoute: route) { [weak self] restrictions in
-            guard let self = self else { return }
-            self.cachedRestrictions = restrictions
-            self.lastOSMQueryTime = Date()
-            print("🗺️ Cached \(restrictions.count) restrictions from OSM")
+        print("🚨 Hazard monitoring started")
 
-            // Notify that restrictions are loaded for map display
-            self.onRestrictionsLoaded?(restrictions)
-
-            // Check immediately with cached restrictions
-            self.checkForHazards(at: currentLocation, alongRoute: route)
-        }
+        // Initial query for the start of the route
+        checkAndQueryOSM(at: currentLocation, alongRoute: route)
+        
+        // Check immediately with whatever we have (or wait for query to finish)
+        self.checkForHazards(at: currentLocation, alongRoute: route)
 
         // Set up timer for continuous monitoring (every 5 seconds)
         monitoringTimer?.invalidate()
@@ -74,10 +77,61 @@ class HazardMonitoringService {
         }
 
         lastCheckedLocation = location
+        
+        // Check if we need to fetch more data
+        checkAndQueryOSM(at: location, alongRoute: route)
+        
         checkForHazards(at: location, alongRoute: route)
     }
 
+    func ignoreHazard(_ alert: HazardAlert) {
+        // Create a unique ID for the hazard based on location and type
+        let id = "\(alert.coordinate.latitude),\(alert.coordinate.longitude)-\(alert.type)"
+        ignoredHazards.insert(id)
+        print("🚫 Hazard ignored: \(id)")
+    }
+
+
     // MARK: - Private Methods
+    
+    private func checkAndQueryOSM(at location: CLLocation, alongRoute route: [CLLocationCoordinate2D]) {
+        // If we haven't queried yet, or if we've moved far enough from the last query point
+        let shouldQuery: Bool
+        if let lastQuery = lastQueryLocation {
+            shouldQuery = location.distance(from: lastQuery) > queryInterval
+        } else {
+            shouldQuery = true
+        }
+        
+        guard shouldQuery else { return }
+        
+        print("🗺️ OSM: Triggering incremental query from \(location.coordinate.latitude), \(location.coordinate.longitude)")
+        lastQueryLocation = location
+        
+        // Get segment ahead
+        let segment = getUpcomingRouteSegment(from: location.coordinate, route: route, lookAheadDistance: queryLookAhead)
+        
+        guard !segment.isEmpty else { return }
+        
+        osmService.queryRestrictions(alongRoute: segment) { [weak self] newRestrictions in
+            guard let self = self else { return }
+            
+            // Merge with existing cache (avoiding duplicates if possible, or just append)
+            // Simple append for now, assuming segments don't overlap too much or duplicates are harmless
+            self.cachedRestrictions.append(contentsOf: newRestrictions)
+            
+            // Optional: Prune old restrictions far behind? (For now, keep simple)
+            
+            self.lastOSMQueryTime = Date()
+            print("🗺️ OSM: Added \(newRestrictions.count) restrictions. Total cached: \(self.cachedRestrictions.count)")
+            
+            // Notify update
+            self.onRestrictionsLoaded?(self.cachedRestrictions)
+            
+            // Re-check hazards with new data
+            self.checkForHazards(at: location, alongRoute: route)
+        }
+    }
 
     private func checkForHazards(at location: CLLocation, alongRoute route: [CLLocationCoordinate2D]) {
         // Check if hazard warnings are enabled
@@ -203,9 +257,14 @@ class HazardMonitoringService {
                     location: restriction.roadName,
                     coordinate: restriction.coordinate
                 )
-                onHazardDetected?(alert)
-                print("🚨 OSM Restriction: \(restriction.type.rawValue) at \(String(format: "%.0f", distanceToRestriction))m - \(restriction.roadName ?? "unnamed road")")
-                return // Only report one hazard at a time
+
+                // Check if this hazard has been ignored
+                let id = "\(alert.coordinate.latitude),\(alert.coordinate.longitude)-\(alert.type)"
+                if !ignoredHazards.contains(id) {
+                    onHazardDetected?(alert)
+                    print("🚨 OSM Restriction: \(restriction.type.rawValue) at \(String(format: "%.0f", distanceToRestriction))m - \(restriction.roadName ?? "unnamed road")")
+                    return // Only report one hazard at a time
+                }
             }
         }
     }
@@ -229,20 +288,18 @@ class HazardMonitoringService {
     }
 
 
-    // MARK: - TomTom API Integration (Placeholder)
+    // MARK: - HERE API Integration (Placeholder)
 
-    private func queryTomTomRestrictions(coordinates: [CLLocationCoordinate2D], completion: @escaping ([TomTomRestriction]) -> Void) {
-        // This would make actual API calls to TomTom Traffic API
-        // For now, returning empty array
-        // Real implementation would use:
-        // https://api.tomtom.com/traffic/services/4/flowSegmentData/...
+    private func queryHERERestrictions(coordinates: [CLLocationCoordinate2D], completion: @escaping ([HERERestriction]) -> Void) {
+        // This would make actual API calls to HERE Platform Data or Fleet Telematics
+        // For now, returning empty array as we rely on OSM and the safe route calculated by HERE
         completion([])
     }
 }
 
 // MARK: - Supporting Models
 
-struct TomTomRestriction {
+struct HERERestriction {
     let type: RestrictionType
     let value: Double
     let unit: String

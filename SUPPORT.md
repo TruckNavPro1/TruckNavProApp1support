@@ -6,10 +6,10 @@ Welcome to TruckNav Pro support. We're here to help you get the most out of your
 
 ## Quick Links
 
-- **Report a Bug**: [Open an Issue](https://github.com/TruckNavPro1/TruckNavProApp/issues/new?template=bug_report.md)
-- **Feature Request**: [Request a Feature](https://github.com/TruckNavPro1/TruckNavProApp/issues/new?template=feature_request.md)
+- **Report a Bug**: [Open an Issue](https://github.com/derrickgray494-rgb/TruckProNav/issues/new?template=bug_report.md)
+- **Feature Request**: [Request a Feature](https://github.com/derrickgray494-rgb/TruckProNav/issues/new?template=feature_request.md)
 - **Email Support**: support@trucknavpro.com
-- **Privacy Policy**: [View Privacy Policy](https://github.com/TruckNavPro1/TruckNavProApp/blob/main/PRIVACY_POLICY.md)
+- **Privacy Policy**: [View Privacy Policy](https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md)
 
 ---
 
@@ -146,7 +146,7 @@ Please include:
 
 ### GitHub Issues
 For bug reports and feature requests, please use our GitHub repository:
-https://github.com/TruckNavPro1/TruckNavProApp/issues
+https://github.com/derrickgray494-rgb/TruckProNav/issues
 
 **When reporting bugs, include**:
 - Device and iOS version
@@ -189,7 +189,7 @@ For privacy-related inquiries, data access requests, or account deletion:
 
 ## Legal & Policies
 
-- **Privacy Policy**: https://github.com/TruckNavPro1/TruckNavProApp/blob/main/PRIVACY_POLICY.md
+- **Privacy Policy**: https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md
 - **Terms of Service**: Coming soon
 - **App Store Page**: https://apps.apple.com/app/trucknavpro1 (coming soon)
 
@@ -211,7 +211,7 @@ For issues specific to these services, we'll coordinate with them on your behalf
 ## Feedback & Feature Requests
 
 We love hearing from our users! Share your ideas:
-- **Feature Requests**: https://github.com/TruckNavPro1/TruckNavProApp/issues
+- **Feature Requests**: https://github.com/derrickgray494-rgb/TruckProNav/issues
 - **General Feedback**: support@trucknavpro.com
 - **App Store Review**: Help others discover TruckNav Pro by leaving a review
 

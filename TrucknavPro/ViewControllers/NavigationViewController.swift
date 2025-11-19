@@ -289,8 +289,6 @@ class MapViewController: UIViewController {
 
             tomTomRoutingService = TomTomRoutingService(apiKey: tomTomApiKey)
             tomTomTrafficService = TomTomTrafficService(apiKey: tomTomApiKey)
-            tomTomSearchService = TomTomSearchService(apiKey: tomTomApiKey)
-            hazardMonitoringService = HazardMonitoringService(tomTomApiKey: tomTomApiKey)
             weatherOverlayService = WeatherOverlayService()
             setupHazardWarningCallbacks()
 
@@ -314,6 +312,7 @@ class MapViewController: UIViewController {
             hereRoutingService = HERERoutingService(apiKey: hereApiKey)
             hereWeatherService = HEREWeatherService(apiKey: hereApiKey)
             waypointService = HEREWaypointService(apiKey: hereApiKey)
+            hazardMonitoringService = HazardMonitoringService(hereApiKey: hereApiKey)
             print("✅ HERE Services initialized (fallback enabled):")
             print("   - Search: ✓")
             print("   - Traffic: ✓")
@@ -1021,14 +1020,6 @@ class MapViewController: UIViewController {
 
             annotation.iconColor = StyleColor(iconColor)
             annotation.iconSize = 1.2
-
-            // Add text label
-            annotation.textField = incident.description
-            annotation.textColor = StyleColor(.white)
-            annotation.textHaloColor = StyleColor(.black)
-            annotation.textHaloWidth = 2
-            annotation.textSize = 10
-            annotation.textOffset = [0, -2]
 
             annotations.append(annotation)
         }
@@ -1979,12 +1970,6 @@ extension MapViewController: SearchControllerDelegate {
 
         for result in results {
             var annotation = PointAnnotation(coordinate: result.coordinate)
-            annotation.textField = result.name
-            annotation.textColor = StyleColor(.label)
-            annotation.textHaloColor = StyleColor(.systemBackground)
-            annotation.textHaloWidth = 2
-            annotation.textOffset = [0, -1.5]
-            annotation.textSize = 12
 
             // Use SF Symbol for pin
             annotation.iconImage = "mappin.circle.fill"

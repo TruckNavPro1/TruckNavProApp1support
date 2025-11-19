@@ -558,7 +558,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             }
         case 2:
             // Privacy Policy
-            if let url = URL(string: "https://github.com/TruckNavPro1/TruckNavProApp/blob/main/PRIVACY_POLICY.md") {
+            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md") {
                 UIApplication.shared.open(url)
                 print("📄 Opening Privacy Policy")
             } else {
@@ -566,7 +566,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             }
         case 3:
             // EULA
-            if let url = URL(string: "https://github.com/TruckNavPro1/TruckNavProApp/blob/main/EULA.md") {
+            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/EULA.md") {
                 UIApplication.shared.open(url)
                 print("📄 Opening EULA")
             } else {
@@ -574,7 +574,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             }
         case 4:
             // Terms of Service
-            if let url = URL(string: "https://github.com/TruckNavPro1/TruckNavProApp/blob/main/TERMS_OF_SERVICE.md") {
+            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md") {
                 UIApplication.shared.open(url)
                 print("📄 Opening Terms of Service")
             } else {

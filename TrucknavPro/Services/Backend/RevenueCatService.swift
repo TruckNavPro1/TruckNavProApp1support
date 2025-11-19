@@ -4,8 +4,9 @@
 //
 
 import Foundation
-import UIKit
 import RevenueCat
+import StoreKit
+import UIKit
 
 // MARK: - Subscription Tiers
 
@@ -93,8 +94,11 @@ class RevenueCatService {
             return
         }
 
-        Purchases.logLevel = .debug
+        // Configure with API key
+        // Note: Purchases.logLevel is set to .error in TrucknavProApp.swift init
+        // RevenueCat SDK automatically handles sandbox vs production receipt validation
         Purchases.configure(withAPIKey: apiKey)
+
         isConfigured = true
 
         // Set user ID if logged in
@@ -103,9 +107,23 @@ class RevenueCatService {
                 Purchases.shared.logIn(userId) { customerInfo, created, error in
                     if let error = error {
                         print("❌ RevenueCat login error: \(error.localizedDescription)")
+                        // Don't block app if login fails - user can still access free features
+                        self.updateSubscriptionStatus(customerInfo: nil)
                     } else {
                         print("✅ RevenueCat user logged in: \(userId)")
                         self.updateSubscriptionStatus(customerInfo: customerInfo)
+                    }
+                }
+            } else {
+                // No user logged in - fetch customer info anonymously
+                Task { @MainActor in
+                    do {
+                        let customerInfo = try await self.getCustomerInfo()
+                        print("✅ RevenueCat configured with anonymous user")
+                    } catch {
+                        print("⚠️ RevenueCat customer info fetch failed: \(error.localizedDescription)")
+                        // Don't block app - user can still access free features
+                        self.updateSubscriptionStatus(customerInfo: nil)
                     }
                 }
             }
@@ -118,30 +136,101 @@ class RevenueCatService {
 
     /// Get available packages/offerings
     func getOfferings() async throws -> Offerings {
+        guard isConfigured else {
+            throw RevenueCatError.notConfigured
+        }
         return try await Purchases.shared.offerings()
     }
 
     /// Purchase a package
     func purchase(package: Package) async throws -> (transaction: StoreTransaction?, customerInfo: CustomerInfo, userCancelled: Bool) {
-        let result = try await Purchases.shared.purchase(package: package)
-        updateSubscriptionStatus(customerInfo: result.customerInfo)
-        print("✅ Purchase successful: \(package.storeProduct.localizedTitle)")
-        return result
+        guard isConfigured else {
+            throw RevenueCatError.notConfigured
+        }
+
+        do {
+            let result = try await Purchases.shared.purchase(package: package)
+            updateSubscriptionStatus(customerInfo: result.customerInfo)
+            print("✅ Purchase successful: \(package.storeProduct.localizedTitle)")
+            return result
+        } catch let error as ErrorCode {
+            // Handle specific RevenueCat errors
+            switch error {
+            case .receiptAlreadyInUseError:
+                print("⚠️ Receipt already in use - restoring purchases")
+                // Attempt to restore purchases to sync subscription status
+                let customerInfo = try await Purchases.shared.restorePurchases()
+                updateSubscriptionStatus(customerInfo: customerInfo)
+                throw RevenueCatError.receiptInUse
+            case .invalidReceiptError, .missingReceiptFileError:
+                print("❌ Invalid or missing receipt - attempting refresh")
+                // Let RevenueCat handle receipt refresh automatically
+                throw RevenueCatError.receiptInvalid
+            case .networkError:
+                print("❌ Network error during purchase")
+                throw RevenueCatError.networkError
+            default:
+                print("❌ Purchase error: \(error.localizedDescription)")
+                throw error
+            }
+        }
     }
 
     /// Restore purchases
     func restorePurchases() async throws -> CustomerInfo {
-        let customerInfo = try await Purchases.shared.restorePurchases()
-        updateSubscriptionStatus(customerInfo: customerInfo)
-        print("✅ Purchases restored")
-        return customerInfo
+        guard isConfigured else {
+            throw RevenueCatError.notConfigured
+        }
+
+        do {
+            let customerInfo = try await Purchases.shared.restorePurchases()
+            updateSubscriptionStatus(customerInfo: customerInfo)
+            print("✅ Purchases restored")
+            return customerInfo
+        } catch let error as ErrorCode {
+            // Handle receipt validation errors gracefully
+            switch error {
+            case .invalidReceiptError, .missingReceiptFileError:
+                print("⚠️ Receipt validation issue during restore - user may have no purchases")
+                // Return empty customer info instead of crashing
+                updateSubscriptionStatus(customerInfo: nil)
+                throw RevenueCatError.receiptInvalid
+            case .networkError:
+                print("❌ Network error during restore")
+                throw RevenueCatError.networkError
+            default:
+                print("❌ Restore error: \(error.localizedDescription)")
+                throw error
+            }
+        }
     }
 
     /// Get current customer info
     func getCustomerInfo() async throws -> CustomerInfo {
-        let customerInfo = try await Purchases.shared.customerInfo()
-        updateSubscriptionStatus(customerInfo: customerInfo)
-        return customerInfo
+        guard isConfigured else {
+            throw RevenueCatError.notConfigured
+        }
+
+        do {
+            let customerInfo = try await Purchases.shared.customerInfo()
+            updateSubscriptionStatus(customerInfo: customerInfo)
+            return customerInfo
+        } catch let error as ErrorCode {
+            // Handle receipt validation errors gracefully
+            switch error {
+            case .invalidReceiptError, .missingReceiptFileError:
+                print("⚠️ Receipt validation issue - treating as free user")
+                // Treat as free user instead of blocking app
+                updateSubscriptionStatus(customerInfo: nil)
+                throw RevenueCatError.receiptInvalid
+            case .networkError:
+                print("⚠️ Network error fetching customer info - using cached status")
+                throw RevenueCatError.networkError
+            default:
+                print("❌ Customer info error: \(error.localizedDescription)")
+                throw error
+            }
+        }
     }
 
     /// Update subscription status based on customer info
@@ -255,6 +344,28 @@ enum Feature {
             return .proWeekly  // Any Pro tier will work
         case .lifetimeHistory, .prioritySupport, .customProfiles, .fleetManagement:
             return .premium
+        }
+    }
+}
+
+// MARK: - RevenueCat Errors
+
+enum RevenueCatError: LocalizedError {
+    case notConfigured
+    case receiptInUse
+    case receiptInvalid
+    case networkError
+
+    var errorDescription: String? {
+        switch self {
+        case .notConfigured:
+            return "RevenueCat is not configured. Please check your setup."
+        case .receiptInUse:
+            return "This purchase is already associated with another account."
+        case .receiptInvalid:
+            return "Unable to validate your purchase. Please try again later."
+        case .networkError:
+            return "Network connection error. Please check your internet connection."
         }
     }
 }

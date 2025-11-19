@@ -188,15 +188,22 @@ class HERERoutingService {
                     return
                 }
 
+                // Decode polyline
+                let decodedCoordinates = FlexiblePolylineDecoder.decode(polyline: firstRoute.sections.first?.polyline ?? "")
+                
                 // Parse route sections
                 let sections = firstRoute.sections.map { section -> HERERoute.RouteSection in
                     let instructions = section.actions?.map { action -> HERERoute.RouteSection.Instruction in
-                        // Note: offset is distance along polyline, not a coordinate
-                        // TODO: Decode polyline and extract coordinate at offset position
+                        // Get coordinate from polyline using offset (index)
+                        var coordinate = CLLocationCoordinate2D(latitude: 0, longitude: 0)
+                        if let offset = action.offset, Int(offset) < decodedCoordinates.count {
+                            coordinate = decodedCoordinates[Int(offset)]
+                        }
+                        
                         return HERERoute.RouteSection.Instruction(
                             text: action.instruction ?? "",
                             distance: action.length ?? 0,
-                            coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0),  // Placeholder until polyline decoding implemented
+                            coordinate: coordinate,
                             action: action.action ?? "",
                             direction: action.direction
                         )

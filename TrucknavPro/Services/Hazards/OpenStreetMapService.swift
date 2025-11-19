@@ -143,18 +143,23 @@ class OpenStreetMapService {
         return sampled
     }
 
-    private func buildOverpassQuery(for coordinates: [CLLocationCoordinate2D], radius: Int = 100) -> String {
+    private func buildOverpassQuery(for coordinates: [CLLocationCoordinate2D], radius: Int = 500) -> String {
         var queryParts: [String] = []
 
         for coord in coordinates {
             let lat = coord.latitude
             let lon = coord.longitude
 
-            // Query for ways with truck restrictions near this coordinate
+            // Query for ways AND nodes with truck restrictions (broader search)
             queryParts.append("way(around:\(radius),\(lat),\(lon))[\"maxheight\"];")
+            queryParts.append("node(around:\(radius),\(lat),\(lon))[\"maxheight\"];")
             queryParts.append("way(around:\(radius),\(lat),\(lon))[\"maxweight\"];")
+            queryParts.append("node(around:\(radius),\(lat),\(lon))[\"maxweight\"];")
             queryParts.append("way(around:\(radius),\(lat),\(lon))[\"maxwidth\"];")
             queryParts.append("way(around:\(radius),\(lat),\(lon))[\"maxlength\"];")
+            // Also search for bridge tags
+            queryParts.append("way(around:\(radius),\(lat),\(lon))[\"bridge\"][\"maxheight\"];")
+            queryParts.append("way(around:\(radius),\(lat),\(lon))[\"tunnel\"][\"maxheight\"];")
         }
 
         let query = """

@@ -154,8 +154,10 @@ class HazardWarningView: UIView {
     private let messageLabel = UILabel()
     private let distanceLabel = UILabel()
     private let dismissButton = UIButton(type: .system)
+    private let ignoreButton = UIButton(type: .system)
 
     var onDismiss: (() -> Void)?
+    var onIgnore: (() -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -212,11 +214,26 @@ class HazardWarningView: UIView {
         dismissButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(dismissButton)
 
+        // Ignore button
+        ignoreButton.setTitle("IGNORE", for: .normal)
+        ignoreButton.setTitleColor(.white, for: .normal)
+        ignoreButton.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        ignoreButton.layer.cornerRadius = 8
+        ignoreButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .bold)
+        ignoreButton.addTarget(self, action: #selector(ignoreTapped), for: .touchUpInside)
+        ignoreButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(ignoreButton)
+
         NSLayoutConstraint.activate([
             dismissButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
             dismissButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             dismissButton.widthAnchor.constraint(equalToConstant: 30),
             dismissButton.heightAnchor.constraint(equalToConstant: 30),
+
+            ignoreButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            ignoreButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            ignoreButton.widthAnchor.constraint(equalToConstant: 100),
+            ignoreButton.heightAnchor.constraint(equalToConstant: 36),
 
             iconLabel.topAnchor.constraint(equalTo: topAnchor, constant: 20),
             iconLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -231,7 +248,7 @@ class HazardWarningView: UIView {
             messageLabel.topAnchor.constraint(equalTo: distanceLabel.bottomAnchor, constant: 12),
             messageLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
             messageLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
-            messageLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20)
+            messageLabel.bottomAnchor.constraint(equalTo: ignoreButton.topAnchor, constant: -12)
         ])
     }
 
@@ -288,6 +305,16 @@ class HazardWarningView: UIView {
             self.transform = CGAffineTransform(translationX: 0, y: -50)
         } completion: { _ in
             self.onDismiss?()
+            self.removeFromSuperview()
+        }
+    }
+
+    @objc private func ignoreTapped() {
+        UIView.animate(withDuration: 0.3) {
+            self.alpha = 0
+            self.transform = CGAffineTransform(translationX: 0, y: -50)
+        } completion: { _ in
+            self.onIgnore?()
             self.removeFromSuperview()
         }
     }
