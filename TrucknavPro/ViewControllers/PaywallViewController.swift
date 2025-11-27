@@ -542,19 +542,22 @@ class PaywallViewController: UIViewController {
         let alert = UIAlertController(title: "Legal", message: "Choose a document to view", preferredStyle: .actionSheet)
 
         alert.addAction(UIAlertAction(title: "Terms of Service", style: .default) { _ in
-            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md") {
+            // Apple's standard terms
+            if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                 UIApplication.shared.open(url)
             }
         })
 
         alert.addAction(UIAlertAction(title: "Privacy Policy", style: .default) { _ in
-            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md") {
+            // Apple's privacy policy
+            if let url = URL(string: "https://www.apple.com/privacy/") {
                 UIApplication.shared.open(url)
             }
         })
 
         alert.addAction(UIAlertAction(title: "EULA", style: .default) { _ in
-            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/EULA.md") {
+            // Apple's standard EULA
+            if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                 UIApplication.shared.open(url)
             }
         })
