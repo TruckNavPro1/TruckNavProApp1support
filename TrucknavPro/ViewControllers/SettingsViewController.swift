@@ -643,10 +643,10 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
                 print("⚙️ Opening Notifications settings")
             }
         case 2:
-            // Privacy Policy - Using Apple's privacy policy
-            if let url = URL(string: "https://www.apple.com/privacy/") {
+            // Privacy Policy
+            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md") {
                 UIApplication.shared.open(url)
-                print("📄 Opening Apple's Privacy Policy")
+                print("📄 Opening Privacy Policy")
             } else {
                 showErrorAlert("Privacy Policy URL not configured. Please contact support.")
             }
@@ -659,10 +659,10 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
                 showErrorAlert("EULA URL not configured. Please contact support.")
             }
         case 4:
-            // Terms of Service - Using Apple's standard terms
-            if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
+            // Terms of Service
+            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md") {
                 UIApplication.shared.open(url)
-                print("📄 Opening Apple's Standard Terms")
+                print("📄 Opening Terms of Service")
             } else {
                 showErrorAlert("Terms URL not configured. Please contact support.")
             }
