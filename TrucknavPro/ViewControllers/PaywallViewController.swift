@@ -272,55 +272,30 @@ class PaywallViewController: UIViewController {
         container.layer.cornerCurve = .continuous
 
         let nameLabel = UILabel()
-        nameLabel.text = product.localizedTitle
-        nameLabel.font = .systemFont(ofSize: 20, weight: .semibold)
+        nameLabel.text = "TruckNav Pro"
+        nameLabel.font = .systemFont(ofSize: 24, weight: .bold)
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
         // Add subscription period/length
         let periodLabel = UILabel()
-        if product.productIdentifier.contains("monthly") {
-            periodLabel.text = "Monthly Subscription"
-        } else if product.productIdentifier.contains("yearly") || product.productIdentifier.contains("annual") {
-            periodLabel.text = "Annual Subscription"
-        } else {
-            periodLabel.text = ""
-        }
-        periodLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        periodLabel.textColor = .secondaryLabel
+        periodLabel.text = "Monthly - Full Access"
+        periodLabel.font = .systemFont(ofSize: 18, weight: .medium)
+        periodLabel.textColor = .label
         periodLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let priceLabel = UILabel()
-        // Format price with period
-        if product.productIdentifier.contains("monthly") {
-            priceLabel.text = "\(product.localizedPriceString)/month"
-        } else if product.productIdentifier.contains("yearly") || product.productIdentifier.contains("annual") {
-            priceLabel.text = "\(product.localizedPriceString)/year"
-        } else {
-            priceLabel.text = product.localizedPriceString
-        }
+        priceLabel.text = "$9.99/month"
         priceLabel.font = .systemFont(ofSize: 24, weight: .bold)
         priceLabel.textColor = .systemBlue
         priceLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        // Add price per month label for yearly plans (but don't show fake savings)
+        // Remove savings label - no yearly plan
         let savingsLabel = UILabel()
-        if product.productIdentifier.contains("yearly") || product.productIdentifier.contains("annual") {
-            // Calculate monthly price for yearly plan
-            let yearlyPrice = product.price
-            let monthlyPrice = yearlyPrice / 12
-            let formatter = NumberFormatter()
-            formatter.numberStyle = .currency
-            formatter.locale = product.priceLocale
-            if let monthlyString = formatter.string(from: monthlyPrice) {
-                savingsLabel.text = "(\(monthlyString) per month)"
-            }
-            savingsLabel.font = .systemFont(ofSize: 13, weight: .regular)
-            savingsLabel.textColor = .secondaryLabel
-        }
+        savingsLabel.text = ""
         savingsLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let descriptionLabel = UILabel()
-        descriptionLabel.text = product.localizedDescription
+        descriptionLabel.text = "• Full access truck navigation\n• Weather & traffic alerts\n• Truck stops & weigh stations\n• HOS tracking\n• Offline maps"
         descriptionLabel.font = .systemFont(ofSize: 14, weight: .regular)
         descriptionLabel.textColor = .secondaryLabel
         descriptionLabel.numberOfLines = 0
