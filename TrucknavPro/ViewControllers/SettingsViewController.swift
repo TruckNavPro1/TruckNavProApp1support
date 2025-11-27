@@ -679,10 +679,30 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
     // MARK: - Support
 
     private func showSupportOptions() {
-        // Open email directly
-        if let url = URL(string: "mailto:trucknavpro@gmail.com") {
-            UIApplication.shared.open(url)
+        let alert = UIAlertController(title: "Contact Support", message: "Choose how to reach us", preferredStyle: .actionSheet)
+
+        alert.addAction(UIAlertAction(title: "Email Support", style: .default) { _ in
+            if let url = URL(string: "mailto:trucknavpro@gmail.com") {
+                UIApplication.shared.open(url)
+            }
+        })
+
+        alert.addAction(UIAlertAction(title: "Visit X (Twitter)", style: .default) { _ in
+            if let url = URL(string: "https://x.com/trucknavpro") {
+                UIApplication.shared.open(url)
+            }
+        })
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        // iPad popover configuration
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = self.view
+            popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
         }
+
+        present(alert, animated: true)
     }
 
     // MARK: - Switch Handler
