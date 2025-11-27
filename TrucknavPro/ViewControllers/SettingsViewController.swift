@@ -643,26 +643,26 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
                 print("⚙️ Opening Notifications settings")
             }
         case 2:
-            // Privacy Policy
-            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/PRIVACY_POLICY.md") {
+            // Privacy Policy - Using Apple's privacy policy
+            if let url = URL(string: "https://www.apple.com/privacy/") {
                 UIApplication.shared.open(url)
-                print("📄 Opening Privacy Policy")
+                print("📄 Opening Apple's Privacy Policy")
             } else {
                 showErrorAlert("Privacy Policy URL not configured. Please contact support.")
             }
         case 3:
-            // EULA
-            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/EULA.md") {
+            // EULA - Using Apple's standard EULA
+            if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                 UIApplication.shared.open(url)
-                print("📄 Opening EULA")
+                print("📄 Opening Apple's Standard EULA")
             } else {
                 showErrorAlert("EULA URL not configured. Please contact support.")
             }
         case 4:
-            // Terms of Service
-            if let url = URL(string: "https://github.com/derrickgray494-rgb/TruckProNav/blob/main/TERMS_OF_SERVICE.md") {
+            // Terms of Service - Using Apple's standard terms
+            if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                 UIApplication.shared.open(url)
-                print("📄 Opening Terms of Service")
+                print("📄 Opening Apple's Standard Terms")
             } else {
                 showErrorAlert("Terms URL not configured. Please contact support.")
             }
@@ -681,9 +681,15 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
     private func showSupportOptions() {
         let alert = UIAlertController(title: "Contact Support", message: "Choose how to reach us", preferredStyle: .actionSheet)
 
-        alert.addAction(UIAlertAction(title: "Email Support", style: .default) { _ in
+        alert.addAction(UIAlertAction(title: "Email: trucknavpro@gmail.com", style: .default) { [weak self] _ in
             if let url = URL(string: "mailto:trucknavpro@gmail.com") {
-                UIApplication.shared.open(url)
+                if UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url)
+                } else {
+                    // If mail app not available, copy email to clipboard
+                    UIPasteboard.general.string = "trucknavpro@gmail.com"
+                    self?.showErrorAlert("Email copied to clipboard: trucknavpro@gmail.com")
+                }
             }
         })
 
