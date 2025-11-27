@@ -295,7 +295,7 @@ class PaywallViewController: UIViewController {
         savingsLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let descriptionLabel = UILabel()
-        descriptionLabel.text = "• Full access truck navigation\n• Weather & traffic alerts\n• Truck stops & weigh stations\n• HOS tracking\n• Offline maps"
+        descriptionLabel.text = "• Full access truck navigation\n• Weather\n• Traffic alerts"
         descriptionLabel.font = .systemFont(ofSize: 14, weight: .regular)
         descriptionLabel.textColor = .secondaryLabel
         descriptionLabel.numberOfLines = 0
