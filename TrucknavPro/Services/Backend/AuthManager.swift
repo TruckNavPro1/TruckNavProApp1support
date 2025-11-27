@@ -47,6 +47,33 @@ class AuthManager: ObservableObject {
     // MARK: - Sign In
 
     func signIn(email: String, password: String) async throws {
+        // Define structure for blocked account check
+        struct BlockedAccount: Codable {
+            let email: String
+        }
+
+        // Check if account is blocked (deleted)
+        do {
+            let blockedAccounts: [BlockedAccount] = try await SupabaseService.shared.client.database
+                .from("blocked_accounts")
+                .select("email")
+                .eq("email", value: email)
+                .execute()
+                .value
+
+            if !blockedAccounts.isEmpty {
+                throw NSError(domain: "AuthManager", code: 403,
+                             userInfo: [NSLocalizedDescriptionKey: "This account has been deleted and cannot be accessed."])
+            }
+        } catch let error as NSError {
+            // If it's our blocked account error, re-throw it
+            if error.code == 403 {
+                throw error
+            }
+            // Otherwise ignore (table might not exist)
+            print("⚠️ Could not check blocked accounts: \(error)")
+        }
+
         let session = try await SupabaseService.shared.signIn(email: email, password: password)
         currentUser = session.user
         isAuthenticated = true

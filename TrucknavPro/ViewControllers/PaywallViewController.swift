@@ -10,7 +10,12 @@ class PaywallViewController: UIViewController {
 
     var requiredFeature: Feature?
     var onComplete: (() -> Void)?
-    private var offerings: Offerings?
+    private var products: [StoreProduct] = []
+    private var loadRetryCount = 0
+    private let maxRetries = 3
+
+    // Product ID from App Store Connect
+    private let productIDs = ["pro_monthly1"]
 
     // MARK: - UI Components
 
@@ -79,12 +84,30 @@ class PaywallViewController: UIViewController {
         return button
     }()
 
+    private let loadingIndicator: UIActivityIndicatorView = {
+        let indicator = UIActivityIndicatorView(style: .large)
+        indicator.hidesWhenStopped = true
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        return indicator
+    }()
+
+    private let loadingLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Loading subscription options..."
+        label.font = .systemFont(ofSize: 15, weight: .medium)
+        label.textColor = .secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isHidden = true
+        return label
+    }()
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-        loadOfferings()
+        loadProducts()
     }
 
     // MARK: - Setup
@@ -97,6 +120,8 @@ class PaywallViewController: UIViewController {
         contentView.addSubview(closeButton)
         contentView.addSubview(titleLabel)
         contentView.addSubview(subtitleLabel)
+        contentView.addSubview(loadingIndicator)
+        contentView.addSubview(loadingLabel)
         contentView.addSubview(packageStackView)
         contentView.addSubview(restoreButton)
         contentView.addSubview(termsButton)
@@ -130,6 +155,12 @@ class PaywallViewController: UIViewController {
             subtitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
             subtitleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
 
+            loadingIndicator.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 60),
+            loadingIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+
+            loadingLabel.topAnchor.constraint(equalTo: loadingIndicator.bottomAnchor, constant: 16),
+            loadingLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+
             packageStackView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 40),
             packageStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
             packageStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
@@ -145,82 +176,219 @@ class PaywallViewController: UIViewController {
         // Set content based on required feature
         if let feature = requiredFeature {
             titleLabel.text = "Unlock \(feature.displayName)"
-            subtitleLabel.text = "Upgrade to \(feature.requiredTier.displayName) to access this feature"
+            subtitleLabel.text = "Subscribe to access this feature"
         } else {
-            titleLabel.text = "Upgrade to Pro"
-            subtitleLabel.text = "Get unlimited access to all premium features"
+            titleLabel.text = "TruckNav Pro"
+            subtitleLabel.text = "Unlimited truck navigation, HOS tracking, expense tracking & more"
         }
     }
 
-    // MARK: - Load Offerings
+    // MARK: - Load Products
 
-    private func loadOfferings() {
-        print("🔄 Starting to load offerings from RevenueCat...")
+    private func loadProducts() {
+        print("🔄 Starting to load products from App Store (attempt \(loadRetryCount + 1)/\(maxRetries))...")
+        print("📦 Requesting product IDs: \(productIDs)")
+
+        // Show loading indicator
+        loadingIndicator.startAnimating()
+        loadingLabel.isHidden = false
+        packageStackView.isHidden = true
 
         // Check if RevenueCat is configured
         guard RevenueCatService.shared.isConfigured else {
             print("❌ RevenueCat is not configured - showing fallback")
+            hideLoading()
             displayFallbackPackages()
             return
         }
-
-        // Invalidate cache to fetch fresh offerings
-        Purchases.shared.invalidateCustomerInfoCache()
-        print("🗑️ Cache invalidated, fetching fresh offerings...")
 
         Task {
             do {
-                offerings = try await RevenueCatService.shared.getOfferings()
-                print("✅ Offerings loaded successfully")
-                print("📦 Total offerings: \(offerings?.all.count ?? 0)")
-                print("📦 Available offerings: \(offerings?.all.keys.joined(separator: ", ") ?? "none")")
-                print("📦 Current offering: \(offerings?.current?.identifier ?? "not set")")
+                // Fetch products directly by ID from App Store
+                let fetchedProducts = try await Purchases.shared.products(productIDs)
+                print("✅ Products loaded successfully: \(fetchedProducts.count)")
+
+                for product in fetchedProducts {
+                    print("📦 Product: \(product.productIdentifier) - \(product.localizedTitle) - \(product.localizedPriceString)")
+                }
 
                 await MainActor.run {
-                    displayPackages()
+                    loadRetryCount = 0 // Reset on success
+                    products = fetchedProducts
+                    hideLoading()
+                    displayProducts()
                 }
             } catch {
-                print("❌ Error loading offerings: \(error)")
+                print("❌ Error loading products: \(error)")
                 print("❌ Error details: \(error.localizedDescription)")
+
                 await MainActor.run {
-                    // CRITICAL: Show fallback instead of error for Apple Review
-                    displayFallbackPackages()
+                    // Retry with exponential backoff
+                    if loadRetryCount < maxRetries {
+                        loadRetryCount += 1
+                        let delay = Double(loadRetryCount) * 1.5 // 1.5s, 3s, 4.5s
+                        print("🔄 Retrying in \(delay) seconds...")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                            self?.loadProducts()
+                        }
+                    } else {
+                        print("❌ Max retries reached - showing fallback")
+                        hideLoading()
+                        displayFallbackPackages()
+                    }
                 }
             }
         }
     }
 
-    private func displayPackages() {
-        print("📱 displayPackages() called")
+    private func displayProducts() {
+        print("📱 displayProducts() called")
 
-        guard let offerings = offerings else {
-            print("❌ No offerings available - showing fallback")
+        // Clear existing views
+        packageStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        guard !products.isEmpty else {
+            print("❌ No products available - showing fallback")
             displayFallbackPackages()
             return
         }
 
-        print("✅ Offerings object exists")
+        // Sort products by price (cheapest first)
+        let sortedProducts = products.sorted { $0.price < $1.price }
 
-        guard let current = offerings.current else {
-            print("❌ No current offering set in RevenueCat")
-            print("📦 Available offerings: \(offerings.all.keys.joined(separator: ", "))")
+        for product in sortedProducts {
+            let productView = createProductView(for: product)
+            packageStackView.addArrangedSubview(productView)
+        }
 
-            // Try to use the first available offering if current is not set
-            if let firstOffering = offerings.all.values.first {
-                print("ℹ️ Using first available offering: \(firstOffering.identifier)")
-                displayPackagesFromOffering(firstOffering)
-            } else {
-                print("❌ No offerings at all - showing fallback")
-                displayFallbackPackages()
-            }
+        print("✅ Displayed \(sortedProducts.count) products")
+    }
+
+    private func createProductView(for product: StoreProduct) -> UIView {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.backgroundColor = .secondarySystemBackground
+        container.layer.cornerRadius = 16
+        container.layer.cornerCurve = .continuous
+
+        let nameLabel = UILabel()
+        nameLabel.text = product.localizedTitle
+        nameLabel.font = .systemFont(ofSize: 20, weight: .semibold)
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let priceLabel = UILabel()
+        priceLabel.text = product.localizedPriceString
+        priceLabel.font = .systemFont(ofSize: 28, weight: .bold)
+        priceLabel.textColor = .systemBlue
+        priceLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let descriptionLabel = UILabel()
+        descriptionLabel.text = product.localizedDescription
+        descriptionLabel.font = .systemFont(ofSize: 14, weight: .regular)
+        descriptionLabel.textColor = .secondaryLabel
+        descriptionLabel.numberOfLines = 0
+        descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let subscribeButton = UIButton(type: .system)
+        subscribeButton.setTitle("Subscribe", for: .normal)
+        subscribeButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        subscribeButton.backgroundColor = .systemBlue
+        subscribeButton.setTitleColor(.white, for: .normal)
+        subscribeButton.layer.cornerRadius = 12
+        subscribeButton.translatesAutoresizingMaskIntoConstraints = false
+        subscribeButton.addTarget(self, action: #selector(productSubscribeTapped(_:)), for: .touchUpInside)
+
+        // Store product reference
+        objc_setAssociatedObject(subscribeButton, &productKey, product, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        container.addSubview(nameLabel)
+        container.addSubview(priceLabel)
+        container.addSubview(descriptionLabel)
+        container.addSubview(subscribeButton)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 200),
+
+            nameLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
+            nameLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            nameLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+
+            priceLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
+            priceLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+
+            descriptionLabel.topAnchor.constraint(equalTo: priceLabel.bottomAnchor, constant: 12),
+            descriptionLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            descriptionLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+
+            subscribeButton.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 20),
+            subscribeButton.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            subscribeButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            subscribeButton.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20),
+            subscribeButton.heightAnchor.constraint(equalToConstant: 50)
+        ])
+
+        return container
+    }
+
+    @objc private func productSubscribeTapped(_ sender: UIButton) {
+        guard let product = objc_getAssociatedObject(sender, &productKey) as? StoreProduct else {
             return
         }
 
-        print("✅ Current offering found: \(current.identifier)")
-        displayPackagesFromOffering(current)
+        sender.isEnabled = false
+        sender.setTitle("Processing...", for: .normal)
+
+        Task {
+            do {
+                let result = try await Purchases.shared.purchase(product: product)
+                if !result.userCancelled {
+                    await MainActor.run {
+                        // Dismiss immediately - go straight back to app
+                        dismiss(animated: true) {
+                            self.onComplete?()
+                        }
+                    }
+                } else {
+                    await MainActor.run {
+                        sender.isEnabled = true
+                        sender.setTitle("Subscribe", for: .normal)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    // Better error handling for sandbox/production issues
+                    let errorMessage: String
+                    if let purchaseError = error as? ErrorCode {
+                        switch purchaseError {
+                        case .receiptAlreadyInUseError:
+                            errorMessage = "This subscription is already active on another account."
+                        case .invalidReceiptError:
+                            errorMessage = "Unable to verify purchase. Please try again or contact support."
+                        case .missingReceiptFileError:
+                            errorMessage = "Purchase verification failed. Please restore purchases."
+                        case .networkError:
+                            errorMessage = "Network error. Please check your connection."
+                        case .purchaseCancelledError:
+                            // User cancelled - don't show error
+                            sender.isEnabled = true
+                            sender.setTitle("Subscribe", for: .normal)
+                            return
+                        default:
+                            errorMessage = "Purchase failed. Please try again. Error: \(purchaseError.localizedDescription)"
+                        }
+                    } else {
+                        errorMessage = "Purchase failed. Please try again or contact support."
+                    }
+
+                    showError(errorMessage)
+                    sender.isEnabled = true
+                    sender.setTitle("Subscribe", for: .normal)
+                }
+            }
+        }
     }
 
-    // MARK: - Fallback Packages (for Apple Review)
+    // MARK: - Fallback Packages (for when products can't be loaded)
 
     private func displayFallbackPackages() {
         print("📱 Displaying fallback packages for Apple Review")
@@ -228,11 +396,9 @@ class PaywallViewController: UIViewController {
         // Clear existing package views
         packageStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
-        // Hardcoded fallback subscriptions - shown when RevenueCat fails
+        // Hardcoded fallback subscription - shown when RevenueCat fails
         let fallbackPlans = [
-            ("Weekly Pro", "$3.99/week", "Full access to all premium features"),
-            ("Monthly Pro", "$14.99/month", "Best for regular truckers"),
-            ("Yearly Pro", "$99.99/year", "Best value - Save 50%")
+            ("TruckNav Pro", "$9.99/month", "Full access to all premium features")
         ]
 
         for plan in fallbackPlans {
@@ -311,118 +477,27 @@ class PaywallViewController: UIViewController {
     }
 
     @objc private func fallbackSubscribeTapped() {
-        // For Apple Review: Show friendly message and allow them to continue
-        print("⚠️ Fallback subscribe tapped - showing Apple Review friendly message")
+        // Show user-friendly error when subscriptions can't be loaded
+        print("⚠️ Fallback subscribe tapped - showing connection error")
 
         let alert = UIAlertController(
-            title: "Review Mode",
-            message: "Subscription features are being prepared for launch. During app review, you can explore all features. Subscriptions will be fully enabled once the app is approved.",
+            title: "Unable to Connect",
+            message: "We couldn't connect to the App Store. Please check your internet connection and try again.",
             preferredStyle: .alert
         )
 
-        alert.addAction(UIAlertAction(title: "Continue", style: .default) { [weak self] _ in
-            // Dismiss paywall to let Apple reviewers access the app
-            self?.dismiss(animated: true)
+        alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self] _ in
+            // Attempt to reload products
+            self?.loadProducts()
         })
 
-        alert.addAction(UIAlertAction(title: "Retry Connection", style: .cancel) { [weak self] _ in
-            // Attempt to reload offerings in case network was temporarily down
-            self?.loadOfferings()
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
+            self?.dismiss(animated: true) {
+                self?.onComplete?()
+            }
         })
 
         present(alert, animated: true)
-    }
-
-    private func displayPackagesFromOffering(_ offering: Offering) {
-        print("📦 displayPackagesFromOffering() called for: \(offering.identifier)")
-
-        // Clear existing package views
-        packageStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        print("🗑️ Cleared existing package views")
-
-        print("📦 Available packages count: \(offering.availablePackages.count)")
-
-        guard !offering.availablePackages.isEmpty else {
-            print("❌ No packages available in offering '\(offering.identifier)'")
-            showError("No subscription packages available. Please configure products in RevenueCat.")
-            return
-        }
-
-        // Add package cards
-        for (index, package) in offering.availablePackages.enumerated() {
-            print("➕ Adding package \(index + 1): \(package.storeProduct.localizedTitle) - \(package.storeProduct.localizedPriceString)")
-            let packageView = createPackageView(for: package)
-            packageStackView.addArrangedSubview(packageView)
-        }
-
-        print("✅ Displayed \(offering.availablePackages.count) packages from offering '\(offering.identifier)'")
-    }
-
-    private func createPackageView(for package: Package) -> UIView {
-        let container = UIView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.backgroundColor = .secondarySystemBackground
-        container.layer.cornerRadius = 16
-        container.layer.cornerCurve = .continuous
-
-        let nameLabel = UILabel()
-        nameLabel.text = package.storeProduct.localizedTitle
-        nameLabel.font = .systemFont(ofSize: 20, weight: .semibold)
-        nameLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let priceLabel = UILabel()
-        priceLabel.text = package.storeProduct.localizedPriceString
-        priceLabel.font = .systemFont(ofSize: 28, weight: .bold)
-        priceLabel.textColor = .systemBlue
-        priceLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let descriptionLabel = UILabel()
-        descriptionLabel.text = package.storeProduct.localizedDescription
-        descriptionLabel.font = .systemFont(ofSize: 14, weight: .regular)
-        descriptionLabel.textColor = .secondaryLabel
-        descriptionLabel.numberOfLines = 0
-        descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let subscribeButton = UIButton(type: .system)
-        subscribeButton.setTitle("Subscribe", for: .normal)
-        subscribeButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        subscribeButton.backgroundColor = .systemBlue
-        subscribeButton.setTitleColor(.white, for: .normal)
-        subscribeButton.layer.cornerRadius = 12
-        subscribeButton.translatesAutoresizingMaskIntoConstraints = false
-        subscribeButton.tag = package.hashValue
-        subscribeButton.addTarget(self, action: #selector(subscribeTapped(_:)), for: .touchUpInside)
-
-        // Store package reference
-        objc_setAssociatedObject(subscribeButton, &packageKey, package, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-
-        container.addSubview(nameLabel)
-        container.addSubview(priceLabel)
-        container.addSubview(descriptionLabel)
-        container.addSubview(subscribeButton)
-
-        NSLayoutConstraint.activate([
-            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 200),
-
-            nameLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
-            nameLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            nameLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-
-            priceLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
-            priceLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-
-            descriptionLabel.topAnchor.constraint(equalTo: priceLabel.bottomAnchor, constant: 12),
-            descriptionLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            descriptionLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-
-            subscribeButton.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 20),
-            subscribeButton.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            subscribeButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-            subscribeButton.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20),
-            subscribeButton.heightAnchor.constraint(equalToConstant: 50)
-        ])
-
-        return container
     }
 
     // MARK: - Actions
@@ -430,35 +505,6 @@ class PaywallViewController: UIViewController {
     @objc private func closeTapped() {
         dismiss(animated: true) {
             self.onComplete?()
-        }
-    }
-
-    @objc private func subscribeTapped(_ sender: UIButton) {
-        guard let package = objc_getAssociatedObject(sender, &packageKey) as? Package else {
-            return
-        }
-
-        sender.isEnabled = false
-        sender.setTitle("Processing...", for: .normal)
-
-        Task {
-            do {
-                let result = try await RevenueCatService.shared.purchase(package: package)
-                if !result.userCancelled {
-                    await MainActor.run {
-                        showSuccess("Subscription activated!")
-                        dismiss(animated: true) {
-                            self.onComplete?()
-                        }
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    showError("Purchase failed: \(error.localizedDescription)")
-                    sender.isEnabled = true
-                    sender.setTitle("Subscribe", for: .normal)
-                }
-            }
         }
     }
 
@@ -526,6 +572,12 @@ class PaywallViewController: UIViewController {
 
     // MARK: - Helpers
 
+    private func hideLoading() {
+        loadingIndicator.stopAnimating()
+        loadingLabel.isHidden = true
+        packageStackView.isHidden = false
+    }
+
     private func showError(_ message: String) {
         let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -539,5 +591,6 @@ class PaywallViewController: UIViewController {
     }
 }
 
-// Associated object key for storing package reference
+// Associated object keys for storing references
 private var packageKey: UInt8 = 0
+private var productKey: UInt8 = 0

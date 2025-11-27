@@ -212,35 +212,8 @@ class WelcomeViewController: UIViewController {
     // MARK: - Actions
 
     @objc private func getStartedTapped() {
-        // Check subscription status before continuing
-        checkSubscriptionAndProceed()
-    }
-
-    private func checkSubscriptionAndProceed() {
-        Task {
-            do {
-                _ = try await RevenueCatService.shared.getCustomerInfo()
-                let hasActiveSubscription = RevenueCatService.shared.currentTier.isPro
-
-                await MainActor.run {
-                    if hasActiveSubscription {
-                        // User has active subscription - proceed to app
-                        print("✅ User has active subscription (\(RevenueCatService.shared.currentTier.displayName)), proceeding to app")
-                        onGetStarted?()
-                    } else {
-                        // No subscription - show paywall
-                        print("⭐ No active subscription (tier: \(RevenueCatService.shared.currentTier.displayName)), showing paywall")
-                        showPaywall()
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    print("⚠️ Error checking subscription: \(error.localizedDescription)")
-                    // Show paywall on error to be safe
-                    showPaywall()
-                }
-            }
-        }
+        // ALWAYS show paywall - no checking
+        showPaywall()
     }
 
     private func showPaywall() {
@@ -252,8 +225,16 @@ class WelcomeViewController: UIViewController {
         }
 
         let navController = UINavigationController(rootViewController: paywall)
+
+        // Always use fullScreen on all devices (including iPad)
         navController.modalPresentationStyle = .fullScreen
         navController.isModalInPresentation = true // Prevent swipe to dismiss
+
+        // Ensure proper presentation on iPad
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            navController.modalTransitionStyle = .coverVertical
+        }
+
         present(navController, animated: true)
     }
 }

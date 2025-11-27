@@ -89,14 +89,14 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         guard let settingsSection = SettingsSection(rawValue: section) else { return 0 }
 
         switch settingsSection {
-        case .account: return 2  // Email + Sign Out
+        case .account: return 3  // Email + Sign Out + Delete Account
         case .subscription: return 2
         case .truck: return 3
         case .navigation: return 4
         case .hazards: return 2
         case .map: return 4
         case .search: return 2
-        case .system: return 6
+        case .system: return 7
         }
     }
 
@@ -155,6 +155,12 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
                 cell.textLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
                 cell.accessoryType = .disclosureIndicator
             }
+        case 2:
+            // Delete Account button
+            cell.textLabel?.text = "Delete Account"
+            cell.textLabel?.textColor = .systemRed
+            cell.textLabel?.font = .systemFont(ofSize: 17, weight: .regular)
+            cell.accessoryType = .disclosureIndicator
         default:
             break
         }
@@ -335,6 +341,9 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             cell.textLabel?.text = "Terms of Service"
             cell.accessoryType = .disclosureIndicator
         case 5:
+            cell.textLabel?.text = "Contact Support"
+            cell.accessoryType = .disclosureIndicator
+        case 6:
             cell.textLabel?.text = "About"
             cell.accessoryType = .disclosureIndicator
         default:
@@ -397,6 +406,13 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
                 // Not authenticated - should show login (but skip is available, so user can be here)
                 print("ℹ️ User not signed in")
             }
+        case 2:
+            // Delete Account
+            if AuthManager.shared.isAuthenticated {
+                showDeleteAccountConfirmation()
+            } else {
+                showErrorAlert("You must be signed in to delete your account")
+            }
         default:
             break
         }
@@ -426,6 +442,76 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
                 }
 
                 print("❌ Sign out failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func showDeleteAccountConfirmation() {
+        let alert = UIAlertController(
+            title: "Delete Account",
+            message: "This will permanently delete your account and all data. This cannot be undone.",
+            preferredStyle: .alert
+        )
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete Account", style: .destructive) { [weak self] _ in
+            self?.performDeleteAccount()
+        })
+
+        present(alert, animated: true)
+    }
+
+    private func performDeleteAccount() {
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Deleting Account", message: "Please wait...\n\n", preferredStyle: .alert)
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        indicator.startAnimating()
+        loadingAlert.view.addSubview(indicator)
+        NSLayoutConstraint.activate([
+            indicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
+            indicator.bottomAnchor.constraint(equalTo: loadingAlert.view.bottomAnchor, constant: -20)
+        ])
+        present(loadingAlert, animated: true)
+
+        Task {
+            do {
+                // Delete account from Supabase
+                try await SupabaseService.shared.deleteAccount()
+
+                // Sign out locally
+                try await AuthManager.shared.signOut()
+
+                await MainActor.run {
+                    // Dismiss loading
+                    loadingAlert.dismiss(animated: true) {
+                        // Clear all user data
+                        UserDefaults.standard.removeObject(forKey: "hasSeenWelcome")
+                        UserDefaults.standard.removeObject(forKey: "hasCompletedPaywall")
+                        UserDefaults.standard.synchronize()
+
+                        // Show success and dismiss settings
+                        let successAlert = UIAlertController(
+                            title: "Account Deleted",
+                            message: "Your account has been permanently deleted.",
+                            preferredStyle: .alert
+                        )
+                        successAlert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                            // Dismiss settings and return to login
+                            self?.dismiss(animated: true) {
+                                // The app will automatically show login screen since user is signed out
+                                NotificationCenter.default.post(name: NSNotification.Name("UserDidSignOut"), object: nil)
+                            }
+                        })
+                        self.present(successAlert, animated: true)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    loadingAlert.dismiss(animated: true) {
+                        self.showErrorAlert("Failed to delete account: \(error.localizedDescription)")
+                    }
+                }
             }
         }
     }
@@ -581,9 +667,21 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
                 showErrorAlert("Terms URL not configured. Please contact support.")
             }
         case 5:
+            // Contact Support
+            showSupportOptions()
+        case 6:
             showAboutView()
         default:
             break
+        }
+    }
+
+    // MARK: - Support
+
+    private func showSupportOptions() {
+        // Open email directly
+        if let url = URL(string: "mailto:trucknavpro@gmail.com") {
+            UIApplication.shared.open(url)
         }
     }
 

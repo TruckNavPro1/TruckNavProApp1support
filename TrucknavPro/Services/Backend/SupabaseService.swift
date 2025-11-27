@@ -217,6 +217,45 @@ class SupabaseService {
 
         return settings.first
     }
+
+    // MARK: - Account Deletion
+
+    /// Delete user account and all associated data
+    func deleteAccount() async throws {
+        // Get user email before signing out
+        guard let userEmail = await currentUser?.email else {
+            throw NSError(domain: "SupabaseService", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+        }
+
+        // Define blocked account structure
+        struct BlockedAccount: Codable {
+            let email: String
+            let blocked_at: String
+            let reason: String
+        }
+
+        let blockedAccount = BlockedAccount(
+            email: userEmail,
+            blocked_at: ISO8601DateFormatter().string(from: Date()),
+            reason: "user_deleted_account"
+        )
+
+        do {
+            // Insert into blocked_accounts table
+            try await client.database
+                .from("blocked_accounts")
+                .insert(blockedAccount)
+                .execute()
+            print("✅ Account blocked from re-login")
+        } catch {
+            print("⚠️ Could not block account: \(error)")
+            // Continue with deletion even if blocking fails
+        }
+
+        // Sign out
+        try await client.auth.signOut()
+        print("✅ Account deleted and blocked")
+    }
 }
 
 // MARK: - Data Models

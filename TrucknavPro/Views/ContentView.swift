@@ -8,22 +8,25 @@ import SwiftUI
 struct ContentView: View {
 
     @StateObject private var authManager = AuthManager.shared
-    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @State private var hasActiveSubscription = false
+    @State private var isCheckingSubscription = true
+    @State private var hasPassedPaywall = false
 
     var body: some View {
         Group {
-            if authManager.isLoading {
+            if authManager.isLoading || isCheckingSubscription {
                 // Loading screen
                 LoadingView()
             } else if authManager.isAuthenticated {
-                if hasSeenWelcome {
-                    // Main app - already authenticated and seen welcome
+                if hasActiveSubscription || hasPassedPaywall {
+                    // Has subscription OR passed paywall - go to app
                     NavigationViewControllerRepresentable()
                         .ignoresSafeArea()
                 } else {
-                    // Show welcome screen after authentication
+                    // No subscription - MUST see paywall
                     WelcomeViewControllerRepresentable(onComplete: {
-                        hasSeenWelcome = true
+                        // User closed paywall (with X or purchase)
+                        hasPassedPaywall = true
                     })
                     .ignoresSafeArea()
                 }
@@ -31,6 +34,27 @@ struct ContentView: View {
                 // Login screen - authentication REQUIRED - TRON EDITION
                 LaunchView_Tron()
                     .ignoresSafeArea()
+            }
+        }
+        .onAppear {
+            checkSubscription()
+        }
+    }
+
+    private func checkSubscription() {
+        Task {
+            do {
+                _ = try await RevenueCatService.shared.getCustomerInfo()
+                let isPro = RevenueCatService.shared.currentTier.isPro
+                await MainActor.run {
+                    hasActiveSubscription = isPro
+                    isCheckingSubscription = false
+                }
+            } catch {
+                await MainActor.run {
+                    hasActiveSubscription = false
+                    isCheckingSubscription = false
+                }
             }
         }
     }
