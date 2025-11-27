@@ -276,11 +276,43 @@ class PaywallViewController: UIViewController {
         nameLabel.font = .systemFont(ofSize: 20, weight: .semibold)
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        // Add subscription period/length
+        let periodLabel = UILabel()
+        periodLabel.text = "All Access Plan"
+        periodLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        periodLabel.textColor = .secondaryLabel
+        periodLabel.translatesAutoresizingMaskIntoConstraints = false
+
         let priceLabel = UILabel()
-        priceLabel.text = product.localizedPriceString
-        priceLabel.font = .systemFont(ofSize: 28, weight: .bold)
+        // Format price with period like Apple wants
+        if product.productIdentifier.contains("monthly") {
+            priceLabel.text = "\(product.localizedPriceString) / Month"
+        } else if product.productIdentifier.contains("yearly") || product.productIdentifier.contains("annual") {
+            priceLabel.text = "\(product.localizedPriceString) / Year"
+        } else if product.productIdentifier.contains("weekly") {
+            priceLabel.text = "\(product.localizedPriceString) / Week"
+        } else {
+            priceLabel.text = product.localizedPriceString
+        }
+        priceLabel.font = .systemFont(ofSize: 24, weight: .bold)
         priceLabel.textColor = .systemBlue
         priceLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // Add savings label for yearly plans
+        let savingsLabel = UILabel()
+        if product.productIdentifier.contains("yearly") || product.productIdentifier.contains("annual") {
+            // Calculate monthly price for yearly plan
+            let yearlyPrice = product.price
+            let monthlyPrice = yearlyPrice / 12
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.locale = product.priceLocale
+            let monthlyString = formatter.string(from: monthlyPrice) ?? ""
+            savingsLabel.text = "(Save 50%. 12 months at \(monthlyString)/mo)"
+            savingsLabel.font = .systemFont(ofSize: 13, weight: .regular)
+            savingsLabel.textColor = .secondaryLabel
+        }
+        savingsLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let descriptionLabel = UILabel()
         descriptionLabel.text = product.localizedDescription
@@ -302,7 +334,9 @@ class PaywallViewController: UIViewController {
         objc_setAssociatedObject(subscribeButton, &productKey, product, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         container.addSubview(nameLabel)
+        container.addSubview(periodLabel)
         container.addSubview(priceLabel)
+        container.addSubview(savingsLabel)
         container.addSubview(descriptionLabel)
         container.addSubview(subscribeButton)
 
@@ -313,10 +347,19 @@ class PaywallViewController: UIViewController {
             nameLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
             nameLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
 
-            priceLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
-            priceLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            periodLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 6),
+            periodLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            periodLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
 
-            descriptionLabel.topAnchor.constraint(equalTo: priceLabel.bottomAnchor, constant: 12),
+            priceLabel.topAnchor.constraint(equalTo: periodLabel.bottomAnchor, constant: 8),
+            priceLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            priceLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+
+            savingsLabel.topAnchor.constraint(equalTo: priceLabel.bottomAnchor, constant: 4),
+            savingsLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            savingsLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+
+            descriptionLabel.topAnchor.constraint(equalTo: savingsLabel.bottomAnchor, constant: 12),
             descriptionLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
             descriptionLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
 
@@ -448,7 +491,9 @@ class PaywallViewController: UIViewController {
         subscribeButton.addTarget(self, action: #selector(fallbackSubscribeTapped), for: .touchUpInside)
 
         container.addSubview(nameLabel)
+        container.addSubview(periodLabel)
         container.addSubview(priceLabel)
+        container.addSubview(savingsLabel)
         container.addSubview(descriptionLabel)
         container.addSubview(subscribeButton)
 
@@ -459,10 +504,19 @@ class PaywallViewController: UIViewController {
             nameLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
             nameLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
 
-            priceLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 8),
-            priceLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            periodLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 6),
+            periodLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            periodLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
 
-            descriptionLabel.topAnchor.constraint(equalTo: priceLabel.bottomAnchor, constant: 12),
+            priceLabel.topAnchor.constraint(equalTo: periodLabel.bottomAnchor, constant: 8),
+            priceLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            priceLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+
+            savingsLabel.topAnchor.constraint(equalTo: priceLabel.bottomAnchor, constant: 4),
+            savingsLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            savingsLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+
+            descriptionLabel.topAnchor.constraint(equalTo: savingsLabel.bottomAnchor, constant: 12),
             descriptionLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
             descriptionLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
 
