@@ -90,7 +90,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
 
         switch settingsSection {
         case .account: return 3  // Email + Sign Out + Delete Account
-        case .subscription: return 2
+        case .subscription: return 3  // Upgrade/Status + Manage + Restore
         case .truck: return 3
         case .navigation: return 4
         case .hazards: return 2
@@ -173,15 +173,32 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
 
         switch indexPath.row {
         case 0:
-            cell.textLabel?.text = "⭐ Upgrade to Pro"
-            cell.textLabel?.textColor = .systemBlue
-            cell.textLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-            cell.accessoryType = .disclosureIndicator
+            // Check subscription status
+            if RevenueCatService.shared.currentTier.isPro {
+                cell.textLabel?.text = "✓ Pro Subscription Active"
+                cell.textLabel?.textColor = .systemGreen
+                cell.textLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+                cell.accessoryType = .none
+                cell.selectionStyle = .none
+            } else {
+                cell.textLabel?.text = "⭐ Upgrade to Pro"
+                cell.textLabel?.textColor = .systemBlue
+                cell.textLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+                cell.accessoryType = .disclosureIndicator
+                cell.selectionStyle = .default
+            }
         case 1:
+            cell.textLabel?.text = "Manage Subscription"
+            cell.textLabel?.textColor = .label
+            cell.textLabel?.font = .systemFont(ofSize: 17, weight: .regular)
+            cell.accessoryType = .disclosureIndicator
+            cell.selectionStyle = .default
+        case 2:
             cell.textLabel?.text = "Restore Purchases"
             cell.textLabel?.textColor = .label
             cell.textLabel?.font = .systemFont(ofSize: 17, weight: .regular)
             cell.accessoryType = .none
+            cell.selectionStyle = .default
         default:
             break
         }
@@ -519,13 +536,20 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
     private func handleSubscriptionSetting(at row: Int) {
         switch row {
         case 0:
-            // Show paywall
-            print("⭐ Opening upgrade screen")
-            let paywall = PaywallViewController()
-            let navController = UINavigationController(rootViewController: paywall)
-            navController.modalPresentationStyle = .pageSheet
-            present(navController, animated: true)
+            // Show paywall only if not already subscribed
+            if !RevenueCatService.shared.currentTier.isPro {
+                print("⭐ Opening upgrade screen")
+                let paywall = PaywallViewController()
+                let navController = UINavigationController(rootViewController: paywall)
+                navController.modalPresentationStyle = .pageSheet
+                present(navController, animated: true)
+            }
+            // If already subscribed, do nothing (row is not selectable)
         case 1:
+            // Manage Subscription - Opens Apple's subscription management
+            print("📱 Opening subscription management")
+            openSubscriptionManagement()
+        case 2:
             // Restore purchases
             print("🔄 Restoring purchases")
 
@@ -1087,6 +1111,21 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         aboutVC.navigationItem.rightBarButtonItem = doneButton
 
         present(navController, animated: true)
+    }
+
+    private func openSubscriptionManagement() {
+        // Open App Store subscription management
+        // This URL opens the App Store app directly to subscription management
+        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+            UIApplication.shared.open(url, options: [:]) { success in
+                if !success {
+                    // Fallback to Settings app if App Store URL doesn't work
+                    if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(settingsUrl)
+                    }
+                }
+            }
+        }
     }
 
     private func showSuccessAlert(_ message: String) {
