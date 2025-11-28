@@ -63,13 +63,32 @@ class WeatherWidgetView: UIView {
     }()
 
     // Apple Weather attribution (required by Apple)
-    private let attributionLabel: UILabel = {
+    private let attributionStackView: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.spacing = 4
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.isUserInteractionEnabled = true
+        return stack
+    }()
+
+    private let appleLogoImageView: UIImageView = {
+        let imageView = UIImageView()
+        // Use the Apple logo SF Symbol
+        imageView.image = UIImage(systemName: "applelogo")
+        imageView.tintColor = .white.withAlphaComponent(0.8)
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+
+    private let weatherAttributionLabel: UILabel = {
         let label = UILabel()
-        label.text = " Weather"  // Apple logo will be prepended
-        label.font = .systemFont(ofSize: 10, weight: .regular)
-        label.textColor = .white.withAlphaComponent(0.7)
+        label.text = "Weather"
+        label.font = .systemFont(ofSize: 10, weight: .medium)
+        label.textColor = .white.withAlphaComponent(0.8)
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.isUserInteractionEnabled = true
         return label
     }()
 
@@ -93,13 +112,17 @@ class WeatherWidgetView: UIView {
         textStack.alignment = .leading
         textStack.translatesAutoresizingMaskIntoConstraints = false
 
+        // Setup attribution stack with Apple logo and text
+        attributionStackView.addArrangedSubview(appleLogoImageView)
+        attributionStackView.addArrangedSubview(weatherAttributionLabel)
+
         containerView.addSubview(weatherIcon)
         containerView.addSubview(textStack)
-        containerView.addSubview(attributionLabel)
+        containerView.addSubview(attributionStackView)
 
         // Add tap gesture for attribution link
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(attributionTapped))
-        attributionLabel.addGestureRecognizer(tapGesture)
+        attributionStackView.addGestureRecognizer(tapGesture)
 
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: topAnchor),
@@ -115,11 +138,15 @@ class WeatherWidgetView: UIView {
             textStack.leadingAnchor.constraint(equalTo: weatherIcon.trailingAnchor, constant: 12),
             textStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
             textStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
-            textStack.bottomAnchor.constraint(lessThanOrEqualTo: attributionLabel.topAnchor, constant: -4),
+            textStack.bottomAnchor.constraint(lessThanOrEqualTo: attributionStackView.topAnchor, constant: -4),
 
-            // Apple Weather attribution at bottom
-            attributionLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
-            attributionLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8)
+            // Apple Weather attribution at bottom - properly aligned
+            attributionStackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            attributionStackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
+
+            // Apple logo size constraints
+            appleLogoImageView.widthAnchor.constraint(equalToConstant: 10),
+            appleLogoImageView.heightAnchor.constraint(equalToConstant: 12)
         ])
 
         // Show default placeholder until weather data loads
