@@ -869,9 +869,171 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
     }
 
     private func showAboutView() {
-        let alert = UIAlertController(title: "TruckNav Pro", message: "Version 1.0.0\n\nTruck-specific navigation powered by Mapbox\n\n© 2025", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+        let aboutVC = UIViewController()
+        aboutVC.view.backgroundColor = .systemBackground
+
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        aboutVC.view.addSubview(scrollView)
+
+        let contentView = UIView()
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.addSubview(contentView)
+
+        // App icon
+        let iconImageView = UIImageView(image: UIImage(named: "AppIcon"))
+        iconImageView.translatesAutoresizingMaskIntoConstraints = false
+        iconImageView.layer.cornerRadius = 20
+        iconImageView.clipsToBounds = true
+
+        // App name and version
+        let titleLabel = UILabel()
+        titleLabel.text = "TruckNav Pro"
+        titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
+        titleLabel.textAlignment = .center
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let versionLabel = UILabel()
+        versionLabel.text = "Version 1.0.0"
+        versionLabel.font = .systemFont(ofSize: 16)
+        versionLabel.textColor = .secondaryLabel
+        versionLabel.textAlignment = .center
+        versionLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // Credits section
+        let creditsTitle = UILabel()
+        creditsTitle.text = "Powered By"
+        creditsTitle.font = .systemFont(ofSize: 18, weight: .semibold)
+        creditsTitle.textAlignment = .center
+        creditsTitle.translatesAutoresizingMaskIntoConstraints = false
+
+        // Mapbox attribution
+        let mapboxLabel = UILabel()
+        mapboxLabel.text = "📍 Mapbox"
+        mapboxLabel.font = .systemFont(ofSize: 16)
+        mapboxLabel.textAlignment = .center
+        mapboxLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let mapboxDescription = UILabel()
+        mapboxDescription.text = "Navigation & Mapping"
+        mapboxDescription.font = .systemFont(ofSize: 14)
+        mapboxDescription.textColor = .secondaryLabel
+        mapboxDescription.textAlignment = .center
+        mapboxDescription.translatesAutoresizingMaskIntoConstraints = false
+
+        // Apple Weather attribution
+        let weatherLabel = UILabel()
+        weatherLabel.text = "🌤 Apple Weather"
+        weatherLabel.font = .systemFont(ofSize: 16)
+        weatherLabel.textAlignment = .center
+        weatherLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let weatherDescription = UILabel()
+        weatherDescription.text = "Weather Data & Forecasts"
+        weatherDescription.font = .systemFont(ofSize: 14)
+        weatherDescription.textColor = .secondaryLabel
+        weatherDescription.textAlignment = .center
+        weatherDescription.translatesAutoresizingMaskIntoConstraints = false
+
+        // Apple Weather attribution link
+        let weatherButton = UIButton(type: .system)
+        weatherButton.setTitle("Apple Weather Attribution", for: .normal)
+        weatherButton.titleLabel?.font = .systemFont(ofSize: 14)
+        weatherButton.translatesAutoresizingMaskIntoConstraints = false
+        weatherButton.addAction(UIAction { _ in
+            if let url = URL(string: "https://weatherkit.apple.com/legal-attribution.html") {
+                UIApplication.shared.open(url)
+            }
+        }, for: .touchUpInside)
+
+        // Copyright
+        let copyrightLabel = UILabel()
+        copyrightLabel.text = "© 2025 TruckNav Pro\nAll rights reserved"
+        copyrightLabel.font = .systemFont(ofSize: 14)
+        copyrightLabel.textColor = .secondaryLabel
+        copyrightLabel.textAlignment = .center
+        copyrightLabel.numberOfLines = 0
+        copyrightLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // Add all views
+        contentView.addSubview(iconImageView)
+        contentView.addSubview(titleLabel)
+        contentView.addSubview(versionLabel)
+        contentView.addSubview(creditsTitle)
+        contentView.addSubview(mapboxLabel)
+        contentView.addSubview(mapboxDescription)
+        contentView.addSubview(weatherLabel)
+        contentView.addSubview(weatherDescription)
+        contentView.addSubview(weatherButton)
+        contentView.addSubview(copyrightLabel)
+
+        // Constraints
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: aboutVC.view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: aboutVC.view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: aboutVC.view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: aboutVC.view.bottomAnchor),
+
+            contentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            contentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+
+            iconImageView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 40),
+            iconImageView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 80),
+            iconImageView.heightAnchor.constraint(equalToConstant: 80),
+
+            titleLabel.topAnchor.constraint(equalTo: iconImageView.bottomAnchor, constant: 20),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            versionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            versionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            versionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            creditsTitle.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 40),
+            creditsTitle.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            creditsTitle.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            mapboxLabel.topAnchor.constraint(equalTo: creditsTitle.bottomAnchor, constant: 20),
+            mapboxLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            mapboxLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            mapboxDescription.topAnchor.constraint(equalTo: mapboxLabel.bottomAnchor, constant: 4),
+            mapboxDescription.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            mapboxDescription.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            weatherLabel.topAnchor.constraint(equalTo: mapboxDescription.bottomAnchor, constant: 20),
+            weatherLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            weatherLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            weatherDescription.topAnchor.constraint(equalTo: weatherLabel.bottomAnchor, constant: 4),
+            weatherDescription.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            weatherDescription.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            weatherButton.topAnchor.constraint(equalTo: weatherDescription.bottomAnchor, constant: 8),
+            weatherButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+
+            copyrightLabel.topAnchor.constraint(equalTo: weatherButton.bottomAnchor, constant: 40),
+            copyrightLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            copyrightLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            copyrightLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -40)
+        ])
+
+        // Present as navigation controller
+        let navController = UINavigationController(rootViewController: aboutVC)
+        aboutVC.title = "About"
+
+        // Create a custom dismiss action for the Done button
+        let doneButton = UIBarButtonItem(barButtonSystemItem: .done, target: nil, action: nil)
+        doneButton.primaryAction = UIAction { [weak self] _ in
+            self?.dismiss(animated: true)
+        }
+        aboutVC.navigationItem.rightBarButtonItem = doneButton
+
+        present(navController, animated: true)
     }
 
     private func showSuccessAlert(_ message: String) {
