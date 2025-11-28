@@ -386,7 +386,7 @@ class PaywallViewController: UIViewController {
                         case .receiptAlreadyInUseError:
                             errorMessage = "This subscription is already active on another account."
                         case .invalidReceiptError:
-                            errorMessage = "Unable to verify purchase. Please try again or contact support."
+                            errorMessage = "Unable to verify purchase. Please try again or restore purchases."
                         case .missingReceiptFileError:
                             errorMessage = "Purchase verification failed. Please restore purchases."
                         case .networkError:
