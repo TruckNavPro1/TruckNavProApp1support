@@ -868,6 +868,49 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         present(alert, animated: true)
     }
 
+    private func createAttributionView(icon: String, title: String, description: String) -> UIView {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let iconLabel = UILabel()
+        iconLabel.text = icon
+        iconLabel.font = .systemFont(ofSize: 20)
+        iconLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = .systemFont(ofSize: 15, weight: .medium)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let descLabel = UILabel()
+        descLabel.text = description
+        descLabel.font = .systemFont(ofSize: 13)
+        descLabel.textColor = .secondaryLabel
+        descLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(iconLabel)
+        container.addSubview(titleLabel)
+        container.addSubview(descLabel)
+
+        NSLayoutConstraint.activate([
+            iconLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            iconLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            iconLabel.widthAnchor.constraint(equalToConstant: 30),
+
+            titleLabel.leadingAnchor.constraint(equalTo: iconLabel.trailingAnchor, constant: 12),
+            titleLabel.topAnchor.constraint(equalTo: container.topAnchor),
+
+            descLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            descLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            descLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            descLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+
+            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 40)
+        ])
+
+        return container
+    }
+
     private func showAboutView() {
         let aboutVC = UIViewController()
         aboutVC.view.backgroundColor = .systemBackground
@@ -907,44 +950,73 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         creditsTitle.textAlignment = .center
         creditsTitle.translatesAutoresizingMaskIntoConstraints = false
 
-        // Mapbox attribution
-        let mapboxLabel = UILabel()
-        mapboxLabel.text = "📍 Mapbox"
-        mapboxLabel.font = .systemFont(ofSize: 16)
-        mapboxLabel.textAlignment = .center
-        mapboxLabel.translatesAutoresizingMaskIntoConstraints = false
+        // Create a vertical stack for all attributions
+        let attributionsStack = UIStackView()
+        attributionsStack.axis = .vertical
+        attributionsStack.spacing = 16
+        attributionsStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let mapboxDescription = UILabel()
-        mapboxDescription.text = "Navigation & Mapping"
-        mapboxDescription.font = .systemFont(ofSize: 14)
-        mapboxDescription.textColor = .secondaryLabel
-        mapboxDescription.textAlignment = .center
-        mapboxDescription.translatesAutoresizingMaskIntoConstraints = false
+        // Mapbox attribution
+        let mapboxContainer = createAttributionView(
+            icon: "📍",
+            title: "Mapbox",
+            description: "Maps & Navigation Engine"
+        )
+
+        // TomTom attribution
+        let tomtomContainer = createAttributionView(
+            icon: "🗺",
+            title: "TomTom",
+            description: "Truck Routing & POI Data"
+        )
+
+        // HERE attribution
+        let hereContainer = createAttributionView(
+            icon: "🛣",
+            title: "HERE Technologies",
+            description: "Route Optimization & Traffic"
+        )
 
         // Apple Weather attribution
-        let weatherLabel = UILabel()
-        weatherLabel.text = "🌤 Apple Weather"
-        weatherLabel.font = .systemFont(ofSize: 16)
-        weatherLabel.textAlignment = .center
-        weatherLabel.translatesAutoresizingMaskIntoConstraints = false
+        let weatherContainer = createAttributionView(
+            icon: "🌤",
+            title: "Apple Weather",
+            description: "Weather Data & Forecasts"
+        )
 
-        let weatherDescription = UILabel()
-        weatherDescription.text = "Weather Data & Forecasts"
-        weatherDescription.font = .systemFont(ofSize: 14)
-        weatherDescription.textColor = .secondaryLabel
-        weatherDescription.textAlignment = .center
-        weatherDescription.translatesAutoresizingMaskIntoConstraints = false
+        // OpenWeather attribution
+        let openWeatherContainer = createAttributionView(
+            icon: "☁️",
+            title: "OpenWeather",
+            description: "Additional Weather Services"
+        )
 
-        // Apple Weather attribution link
+        // RevenueCat attribution
+        let revenueCatContainer = createAttributionView(
+            icon: "💳",
+            title: "RevenueCat",
+            description: "Subscription Management"
+        )
+
+        // Apple Weather attribution link button
         let weatherButton = UIButton(type: .system)
-        weatherButton.setTitle("Apple Weather Attribution", for: .normal)
-        weatherButton.titleLabel?.font = .systemFont(ofSize: 14)
+        weatherButton.setTitle("Apple Weather Legal Attribution", for: .normal)
+        weatherButton.titleLabel?.font = .systemFont(ofSize: 12)
         weatherButton.translatesAutoresizingMaskIntoConstraints = false
         weatherButton.addAction(UIAction { _ in
             if let url = URL(string: "https://weatherkit.apple.com/legal-attribution.html") {
                 UIApplication.shared.open(url)
             }
         }, for: .touchUpInside)
+
+        // Add all attribution views to stack
+        attributionsStack.addArrangedSubview(mapboxContainer)
+        attributionsStack.addArrangedSubview(tomtomContainer)
+        attributionsStack.addArrangedSubview(hereContainer)
+        attributionsStack.addArrangedSubview(weatherContainer)
+        attributionsStack.addArrangedSubview(openWeatherContainer)
+        attributionsStack.addArrangedSubview(revenueCatContainer)
+        attributionsStack.addArrangedSubview(weatherButton)
 
         // Copyright
         let copyrightLabel = UILabel()
@@ -960,11 +1032,7 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         contentView.addSubview(titleLabel)
         contentView.addSubview(versionLabel)
         contentView.addSubview(creditsTitle)
-        contentView.addSubview(mapboxLabel)
-        contentView.addSubview(mapboxDescription)
-        contentView.addSubview(weatherLabel)
-        contentView.addSubview(weatherDescription)
-        contentView.addSubview(weatherButton)
+        contentView.addSubview(attributionsStack)
         contentView.addSubview(copyrightLabel)
 
         // Constraints
@@ -997,26 +1065,11 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
             creditsTitle.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             creditsTitle.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
-            mapboxLabel.topAnchor.constraint(equalTo: creditsTitle.bottomAnchor, constant: 20),
-            mapboxLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            mapboxLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            attributionsStack.topAnchor.constraint(equalTo: creditsTitle.bottomAnchor, constant: 20),
+            attributionsStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 30),
+            attributionsStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -30),
 
-            mapboxDescription.topAnchor.constraint(equalTo: mapboxLabel.bottomAnchor, constant: 4),
-            mapboxDescription.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            mapboxDescription.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-
-            weatherLabel.topAnchor.constraint(equalTo: mapboxDescription.bottomAnchor, constant: 20),
-            weatherLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            weatherLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-
-            weatherDescription.topAnchor.constraint(equalTo: weatherLabel.bottomAnchor, constant: 4),
-            weatherDescription.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            weatherDescription.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-
-            weatherButton.topAnchor.constraint(equalTo: weatherDescription.bottomAnchor, constant: 8),
-            weatherButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-
-            copyrightLabel.topAnchor.constraint(equalTo: weatherButton.bottomAnchor, constant: 40),
+            copyrightLabel.topAnchor.constraint(equalTo: attributionsStack.bottomAnchor, constant: 40),
             copyrightLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             copyrightLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             copyrightLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -40)
