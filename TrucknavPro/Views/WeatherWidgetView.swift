@@ -62,6 +62,17 @@ class WeatherWidgetView: UIView {
         return label
     }()
 
+    // Apple Weather attribution (required by Apple)
+    private let attributionLabel: UILabel = {
+        let label = UILabel()
+        label.text = " Weather"  // Apple logo will be prepended
+        label.font = .systemFont(ofSize: 10, weight: .regular)
+        label.textColor = .white.withAlphaComponent(0.7)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.isUserInteractionEnabled = true
+        return label
+    }()
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupView()
@@ -84,6 +95,11 @@ class WeatherWidgetView: UIView {
 
         containerView.addSubview(weatherIcon)
         containerView.addSubview(textStack)
+        containerView.addSubview(attributionLabel)
+
+        // Add tap gesture for attribution link
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(attributionTapped))
+        attributionLabel.addGestureRecognizer(tapGesture)
 
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: topAnchor),
@@ -99,7 +115,11 @@ class WeatherWidgetView: UIView {
             textStack.leadingAnchor.constraint(equalTo: weatherIcon.trailingAnchor, constant: 12),
             textStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
             textStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
-            textStack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12)
+            textStack.bottomAnchor.constraint(lessThanOrEqualTo: attributionLabel.topAnchor, constant: -4),
+
+            // Apple Weather attribution at bottom
+            attributionLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            attributionLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8)
         ])
 
         // Show default placeholder until weather data loads
@@ -116,6 +136,15 @@ class WeatherWidgetView: UIView {
         dayLabel.text = weatherInfo.dayName
         conditionLabel.text = weatherInfo.condition
         highLowLabel.text = "H:\(weatherInfo.high)° L:\(weatherInfo.low)°"
+    }
+
+    // MARK: - Actions
+
+    @objc private func attributionTapped() {
+        // Open Apple Weather attribution link
+        if let url = URL(string: "https://weatherkit.apple.com/legal-attribution.html") {
+            UIApplication.shared.open(url)
+        }
     }
 
     // MARK: - Image Caching

@@ -682,15 +682,17 @@ class SettingsViewController: UIViewController, UITableViewDelegate, UITableView
         let alert = UIAlertController(title: "Contact Support", message: "Choose how to reach us", preferredStyle: .actionSheet)
 
         alert.addAction(UIAlertAction(title: "Email: trucknavpro@gmail.com", style: .default) { [weak self] _ in
-            if let url = URL(string: "mailto:trucknavpro@gmail.com") {
-                if UIApplication.shared.canOpenURL(url) {
-                    UIApplication.shared.open(url)
-                } else {
-                    // If mail app not available, copy email to clipboard
-                    UIPasteboard.general.string = "trucknavpro@gmail.com"
-                    self?.showErrorAlert("Email copied to clipboard: trucknavpro@gmail.com")
-                }
-            }
+            // Copy email to clipboard
+            UIPasteboard.general.string = "trucknavpro@gmail.com"
+
+            // Show success alert
+            let successAlert = UIAlertController(
+                title: "Email Copied",
+                message: "trucknavpro@gmail.com copied to clipboard",
+                preferredStyle: .alert
+            )
+            successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+            self?.present(successAlert, animated: true)
         })
 
         alert.addAction(UIAlertAction(title: "Visit X (Twitter)", style: .default) { _ in
